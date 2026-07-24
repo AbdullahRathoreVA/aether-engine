@@ -112,6 +112,52 @@ button.no:hover{background:rgba(244,63,94,.14)}
   padding:13px 18px;border-color:rgba(255,176,32,.45);font-size:11.5px;
   line-height:1.65;color:var(--amber);display:none}
 #alert b{color:#fff}
+/* ---------- agent modal ---------- */
+.ag{cursor:pointer}
+.ag:hover{border-color:rgba(34,211,238,.45)}
+#modal{position:fixed;inset:0;z-index:20;background:rgba(3,5,10,.78);
+  backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center}
+#modal.on{display:flex}
+#mbox{width:min(620px,92vw);max-height:84vh;display:flex;flex-direction:column;
+  background:#080c14;border:1px solid rgba(34,211,238,.3);border-radius:13px;
+  box-shadow:0 0 70px rgba(0,0,0,.85),0 0 34px rgba(34,211,238,.12);overflow:hidden}
+#mhead{padding:15px 20px;border-bottom:1px solid var(--edge);display:flex;
+  justify-content:space-between;align-items:center}
+#mhead .t{font-size:15px;color:#fff;letter-spacing:2.5px}
+#mhead .s{font-size:10px;color:var(--mut);letter-spacing:1.6px;margin-top:3px}
+#mclose{cursor:pointer;color:var(--mut);font-size:19px;line-height:1;
+  background:none;border:none;padding:4px 8px}
+#mclose:hover{color:var(--red);background:none}
+#mlog{flex:1;overflow-y:auto;padding:16px 20px;font-size:12px;line-height:1.7}
+#mlog::-webkit-scrollbar{width:5px}
+#mlog::-webkit-scrollbar-thumb{background:var(--edge);border-radius:3px}
+.msg{margin-bottom:14px}
+.msg.me{text-align:right}
+.msg .who{font-size:9px;letter-spacing:1.6px;color:var(--mut);margin-bottom:4px}
+.msg .txt{display:inline-block;text-align:left;padding:10px 14px;border-radius:9px;
+  white-space:pre-wrap;max-width:92%}
+.msg.ag2 .txt{background:rgba(34,211,238,.08);
+  border:1px solid rgba(34,211,238,.22);color:var(--fg)}
+.msg.me .txt{background:rgba(255,176,32,.08);
+  border:1px solid rgba(255,176,32,.25);color:var(--fg)}
+#mfoot{padding:12px 16px;border-top:1px solid var(--edge);display:flex;gap:8px}
+#mtext{flex:1;background:rgba(13,21,36,.75);border:1px solid var(--edge);
+  border-radius:8px;padding:10px 13px;color:var(--fg);font:inherit;font-size:12px}
+#mtext:focus{outline:none;border-color:var(--cyan)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 20px 12px}
+.chip{font-size:9.5px;padding:5px 10px;border:1px solid var(--edge);
+  border-radius:20px;color:var(--mut);cursor:pointer}
+.chip:hover{border-color:var(--cyan);color:var(--cyan)}
+
+/* ---------- money panel ---------- */
+#money{left:20px;top:calc(86px + 190px);width:min(300px,26vw);padding:13px 16px}
+#money .eb{font-size:9px;letter-spacing:2px;color:var(--amber);margin-bottom:9px}
+.lrow{display:flex;justify-content:space-between;font-size:10.5px;
+  padding:4px 0;color:var(--mut)}
+.lrow b{color:var(--fg)}
+#money .hint{font-size:9.5px;color:var(--mut);line-height:1.55;margin-top:9px;
+  padding-top:9px;border-top:1px solid var(--edge)}
+
 /* ---------- showcase ---------- */
 #show{left:20px;top:86px;width:min(300px,26vw);padding:14px 16px}
 #show .eb{font-size:9px;letter-spacing:2px;color:var(--cyan);margin-bottom:6px}
@@ -156,6 +202,32 @@ button.no:hover{background:rgba(244,63,94,.14)}
 <div class="hud panel" id="queue">
   <div class="ph"><span>APPROVAL QUEUE</span><span id="qn">0</span></div>
   <div id="qlist"><div class="empty">Waiting for the first cycle…</div></div>
+</div>
+
+<div class="hud panel" id="money">
+  <div class="eb">MONEY PIPELINE</div>
+  <div class="lrow"><span>Open service leads</span><b id="m-open">0</b></div>
+  <div class="lrow"><span>Outreach drafted</span><b id="m-out">0</b></div>
+  <div class="lrow"><span>Pages earning</span><b id="m-pages">0</b></div>
+  <div class="lrow"><span>Sales logged</span><b id="m-sales">0</b></div>
+  <div class="hint" id="m-hint">Service leads pay in weeks. SEO pages pay in
+  months. Both run at once.</div>
+</div>
+
+<div id="modal">
+  <div id="mbox">
+    <div id="mhead">
+      <div><div class="t" id="m-name">AGENT</div>
+           <div class="s" id="m-role">—</div></div>
+      <button id="mclose">&times;</button>
+    </div>
+    <div id="mlog"></div>
+    <div class="chips" id="mchips"></div>
+    <div id="mfoot">
+      <input id="mtext" placeholder="Ask this agent anything…" autocomplete="off">
+      <button class="ok" id="msend">SEND</button>
+    </div>
+  </div>
 </div>
 
 <div class="hud panel" id="show" style="display:none">
@@ -438,6 +510,17 @@ function renderState(s) {
   if (Scene.alive()) Scene.setHistogram(s.pipeline.histogram || []);
   renderAgents(s.agents || []);
 
+  const L = s.leads || {};
+  $('#m-open').textContent  = L.open || 0;
+  $('#m-out').textContent   = L.drafts || 0;
+  $('#m-pages').textContent = s.pipeline.pages;
+  $('#m-sales').textContent = s.revenue.sales || 0;
+  if (L.open) {
+    $('#m-hint').textContent =
+      `${L.open} paid leads waiting. These convert in weeks — SEO takes months. ` +
+      `Click HUNTER to see them.`;
+  }
+
   if (s.showcase && s.showcase.enabled) {
     $('#show').style.display = 'block';
     $('#sh-name').textContent = s.showcase.name;
@@ -466,7 +549,8 @@ function renderAgents(list) {
       ? `${escapeHtml(a.task)}${a.elapsed > 1 ? ` · ${a.elapsed.toFixed(0)}s` : ''}`
       : (a.status === 'blocked' ? 'backing off after an error'
         : (a.status === 'down' ? 'quarantined — needs a look' : 'standing by'));
-    return `<div class="ag ${a.status}">
+    return `<div class="ag ${a.status}" data-key="${a.key}"
+                 data-name="${escapeHtml(a.name)}" data-role="${escapeHtml(a.role)}">
       <div class="led"></div>
       <div>
         <div class="nm">${escapeHtml(a.name)}</div>
@@ -476,6 +560,11 @@ function renderAgents(list) {
       <div class="num"><b>${a.output}</b>made<br>${a.runs} runs</div>
     </div>`;
   }).join('');
+
+  el.querySelectorAll('.ag').forEach(row => {
+    row.onclick = () => openAgent(row.dataset.key, row.dataset.name,
+                                  row.dataset.role);
+  });
 
   // Light up the matching 3D node for whoever is working.
   if (Scene.alive()) {
@@ -551,6 +640,79 @@ async function act(action, card, item) {
   card.style.opacity = '.25';
   setTimeout(loadQueue, 350);
 }
+
+/* ---------------- agent chat ---------------- */
+let current = null;
+
+const PROMPTS = {
+  hunter: ['What leads did you find?', 'Which one is worth my time?', 'How do you score them?'],
+  scout:  ['Where are you looking?', 'How many today?', 'Any source failing?'],
+  analyst:['What are the best signals?', 'How do you score intent?'],
+  scribe: ['What did you write?', 'Anything waiting for me?'],
+  architect:['Which pages exist?', 'What do you write next?'],
+  herald: ['Where is my site?', 'Is it deployed?'],
+  ledger: ['How much have I earned?', 'Why is it zero?', 'Is checkout set up?'],
+  medic:  ['Anything broken?', 'What failed recently?']
+};
+
+function bubble(who, text, cls) {
+  const log = $('#mlog');
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.innerHTML = `<div class="who">${escapeHtml(who)}</div>` +
+                `<div class="txt">${escapeHtml(text)}</div>`;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+async function openAgent(key, name, role) {
+  current = { key, name };
+  $('#m-name').textContent = name;
+  $('#m-role').textContent = role;
+  $('#mlog').innerHTML = '';
+  $('#modal').classList.add('on');
+  $('#mchips').innerHTML = (PROMPTS[key] || []).map(p =>
+    `<div class="chip">${escapeHtml(p)}</div>`).join('');
+  $('#mchips').querySelectorAll('.chip').forEach(c => {
+    c.onclick = () => { $('#mtext').value = c.textContent; send(); };
+  });
+
+  const thinking = bubble(name, 'reading my own logs…', 'ag2');
+  try {
+    const r = await (await fetch('/api/agent/' + key)).json();
+    thinking.querySelector('.txt').textContent = r.report;
+  } catch (e) {
+    thinking.querySelector('.txt').textContent = 'I could not reach my own data.';
+  }
+  $('#mtext').focus();
+}
+
+async function send() {
+  const box = $('#mtext');
+  const msg = box.value.trim();
+  if (!msg || !current) return;
+  box.value = '';
+  bubble('YOU', msg, 'me');
+  const wait = bubble(current.name, '…', 'ag2');
+  try {
+    const r = await (await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: current.key, message: msg })
+    })).json();
+    wait.querySelector('.txt').textContent = r.reply;
+  } catch (e) {
+    wait.querySelector('.txt').textContent = 'I lost my connection to the engine.';
+  }
+}
+
+$('#mclose').onclick = () => { $('#modal').classList.remove('on'); current = null; };
+$('#modal').onclick = e => { if (e.target.id === 'modal') $('#mclose').click(); };
+$('#msend').onclick = send;
+$('#mtext').onkeydown = e => { if (e.key === 'Enter') send(); };
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('#modal').classList.contains('on')) $('#mclose').click();
+});
 
 function connect() {
   const es = new EventSource('/api/stream');

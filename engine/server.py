@@ -12,7 +12,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import agents, config, db, healer, llm, publisher, revenue
+from . import agents, config, db, healer, leads, llm, publisher, revenue
 
 DASHBOARD = config.ROOT / "dashboard"
 
@@ -50,6 +50,7 @@ def snapshot() -> dict:
             "contact_configured": bool(config.SERVICE_CONTACT),
         },
         "agents": agents.snapshot(),
+        "leads": leads.pipeline(),
         "pipeline": {
             "signals_total": db.scalar("SELECT COUNT(*) FROM signals"),
             "signals_hot": db.scalar(
@@ -113,6 +114,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/stream":
             return self._stream()
 
+        if path.startswith("/api/agent/"):
+            key = path.rsplit("/", 1)[-1]
+            return self._json({"key": key, "report": agents.report(key)})
+
         if path.startswith("/site/"):
             target = config.SITE_DIR / path[6:]
             if target.is_file():
@@ -170,6 +175,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/posted" and cid:
             publisher.mark_posted(cid, payload.get("url", ""))
             return self._json({"ok": True})
+
+        if path == "/api/chat":
+            key = str(payload.get("agent", ""))
+            msg = str(payload.get("message", ""))
+            return self._json({"agent": key, "reply": agents.chat(key, msg)})
 
         if path == "/api/sale":
             # Log a direct Easypaisa / JazzCash / bank sale. Zero fees, so these

@@ -11,8 +11,8 @@ import sys
 import time
 import webbrowser
 
-from . import (agents, config, db, generator, healer, llm, publisher, revenue,
-               scorer, server, sources)
+from . import (agents, config, db, generator, healer, leads, llm, publisher,
+               revenue, scorer, server, sources)
 
 _running = True
 
@@ -67,6 +67,12 @@ def preflight() -> None:
 def build_tasks() -> list[Task]:
     """Each cycle runs under a named agent so the dashboard can attribute work."""
 
+    def lead_cycle():
+        agents.run("hunter", "leads", "hunting paid service leads",
+                   leads.harvest_leads)
+        agents.run("hunter", "leads", "drafting outreach to the best leads",
+                   leads.draft_outreach)
+
     def harvest_cycle():
         agents.run("scout", "sources", "sweeping public sources for new signals",
                    sources.harvest_all)
@@ -98,6 +104,7 @@ def build_tasks() -> list[Task]:
         db.prune()
 
     return [
+        Task("leads",     lead_cycle,     config.INTERVAL_LEADS),
         Task("sources",   harvest_cycle,  config.INTERVAL_HARVEST),
         Task("scorer",    score_cycle,    config.INTERVAL_SCORE),
         Task("generator", generate_cycle, config.INTERVAL_GENERATE),

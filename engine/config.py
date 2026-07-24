@@ -110,6 +110,8 @@ PORT = env_int("PORT", 7717)
 # Each subsystem runs as a named agent so the dashboard can show who is doing
 # what, right now, rather than an anonymous log.
 AGENTS = [
+    # HUNTER first: it works the lane that pays in weeks, not months.
+    ("hunter",    "HUNTER",    "Service Lead Finder", "leads"),
     ("scout",     "SCOUT",     "Signal Harvester",  "sources"),
     ("analyst",   "ANALYST",   "Intent Analyst",    "scorer"),
     ("scribe",    "SCRIBE",    "Content Writer",    "generator"),
@@ -118,6 +120,8 @@ AGENTS = [
     ("ledger",    "LEDGER",    "Revenue Tracker",   "revenue"),
     ("medic",     "MEDIC",     "Self-Repair",       "healer"),
 ]
+
+INTERVAL_LEADS = env_int("INTERVAL_LEADS", 1200)  # 20 min
 
 # ------------------------------------------------------------------ safety ---
 # Self-healing writes to disk. It always backs up, always syntax-checks, and
