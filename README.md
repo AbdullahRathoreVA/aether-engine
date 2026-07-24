@@ -7,9 +7,24 @@ publishes useful long-tail content that funnels to a checkout link, 24/7.
 ```
 HARVEST ──► SCORE ──► SYNTHESISE ──► APPROVE ──► PUBLISH ──► REVENUE
    │           │           │            │            │           │
- public     intent      drafts +     one click    own site    Gumroad
-  APIs     ranking     SEO pages     (social)    (unattended)   API
+ SCOUT     ANALYST    SCRIBE +      one click    HERALD      LEDGER
+                     ARCHITECT      (social)   (unattended)   (Dodo)
+                              MEDIC repairs all of the above
 ```
+
+> ### ⚠️ Payments from Pakistan — read this before choosing a processor
+>
+> **Gumroad does not work.** Verified 24 July 2026: Gumroad pays out only via
+> PayPal or Stripe direct-bank, and **Pakistan is restricted on both**. Gumroad's
+> own documentation says that if a country supports neither, "there is no way to
+> pay you out." You can make sales and never withdraw them. The same applies to
+> **Payhip, Lemon Squeezy, Etsy, and Buy Me a Coffee**.
+>
+> **Use [Dodo Payments](https://dodopayments.com)** — a Merchant of Record that
+> pays out to **Payoneer or Wise**, handles US sales tax and EU VAT, and is
+> treated by FBR as an IT-services export. Alternative: **Payoneer Checkout**.
+> For local buyers, sell direct via Easypaisa/JazzCash and log it with
+> `POST /api/sale` (zero fees).
 
 ## What it does
 
@@ -43,6 +58,34 @@ they're live and indexable.
 **Heal** — any subsystem that throws is logged under a stable signature,
 backed off exponentially, and optionally patched by an LLM (backed up and
 syntax-checked before anything is written). The daemon does not crash.
+
+## Agents
+
+Every subsystem runs as a named agent with live telemetry on the dashboard —
+status light, current task, runs, items produced, success rate. The numbers are
+real: they come from actual executions, not animation.
+
+| Agent | Role |
+|---|---|
+| **SCOUT** | sweeps public sources for new signals |
+| **ANALYST** | ranks signals by buying intent |
+| **SCRIBE** | drafts replies and value posts |
+| **ARCHITECT** | builds long-tail SEO pages |
+| **HERALD** | publishes pages, index and sitemap |
+| **LEDGER** | tracks sales |
+| **MEDIC** | repairs faults, backs off, proposes patches |
+
+## Two price points, one funnel
+
+Every generated page carries **two** offers, because the same visitor traffic
+contains two different buyers:
+
+- the **$14 toolkit** — converts strangers who want a template
+- **Titan Omega** (`SHOWCASE_URL`) — the live demo acts as portfolio for
+  high-ticket automation work, converting the rare visitor who wants the builder
+
+Adding the second offer costs nothing per page and is the difference between a
+$14 ceiling and a $400+ one. Set `SERVICE_CONTACT` to show a "Hire me" button.
 
 ## Quick start
 
