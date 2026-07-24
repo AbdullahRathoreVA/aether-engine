@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AETHER ENGINE // control</title>
+<style>
+:root{
+  --bg:#05070d; --grid:#0d1524; --cyan:#22d3ee; --amber:#ffb020;
+  --green:#34d399; --red:#f43f5e; --fg:#dbe4f0; --mut:#5f7089;
+  --panel:rgba(8,12,20,.82); --edge:rgba(34,211,238,.18);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
+  font-family:'SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace}
+#gl{position:fixed;inset:0;z-index:0;display:block}
+.scan{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.14) 2px 4px);
+  mix-blend-mode:multiply}
+.vig{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.75) 100%)}
+
+.hud{position:fixed;z-index:3}
+.panel{background:var(--panel);border:1px solid var(--edge);border-radius:10px;
+  backdrop-filter:blur(9px);box-shadow:0 0 34px rgba(0,0,0,.6)}
+
+/* ---------- top bar ---------- */
+#top{top:0;left:0;right:0;padding:14px 20px;display:flex;justify-content:space-between;
+  align-items:center;gap:20px;border-bottom:1px solid var(--edge);
+  background:linear-gradient(180deg,rgba(5,7,13,.94),rgba(5,7,13,.4))}
+.brand{font-size:16px;letter-spacing:5px;font-weight:700;color:#fff;
+  text-shadow:0 0 18px rgba(34,211,238,.65)}
+.brand span{color:var(--cyan)}
+.sub{font-size:10px;color:var(--mut);letter-spacing:2.5px;margin-top:3px}
+.stats{display:flex;gap:26px;align-items:center;flex-wrap:wrap}
+.stat{text-align:right;min-width:60px}
+.stat b{display:block;font-size:19px;color:var(--cyan);line-height:1.15;
+  text-shadow:0 0 12px rgba(34,211,238,.5)}
+.stat.amber b{color:var(--amber);text-shadow:0 0 12px rgba(255,176,32,.5)}
+.stat.green b{color:var(--green);text-shadow:0 0 12px rgba(52,211,153,.5)}
+.stat i{font-style:normal;font-size:9px;color:var(--mut);letter-spacing:1.6px}
+
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;
+  background:var(--green);box-shadow:0 0 10px var(--green);animation:pulse 2s infinite}
+.dot.bad{background:var(--red);box-shadow:0 0 10px var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.32}}
+
+/* ---------- terminal ---------- */
+#term{left:20px;bottom:20px;width:min(560px,45vw);height:238px;display:flex;
+  flex-direction:column;overflow:hidden}
+.ph{padding:9px 14px;border-bottom:1px solid var(--edge);font-size:10px;
+  letter-spacing:2.2px;color:var(--mut);display:flex;justify-content:space-between;
+  align-items:center;flex:0 0 auto}
+#feed{flex:1;overflow-y:auto;padding:9px 14px;font-size:11.5px;line-height:1.65}
+#feed div{margin-bottom:2px;word-break:break-word;animation:slide .25s ease}
+@keyframes slide{from{opacity:0;transform:translateX(-9px)}to{opacity:1}}
+.t{color:var(--mut)} .m{color:var(--cyan)}
+.lv-warn .x{color:var(--amber)} .lv-error .x{color:var(--red)} .x{color:var(--fg)}
+#feed::-webkit-scrollbar{width:5px}
+#feed::-webkit-scrollbar-thumb{background:var(--edge);border-radius:3px}
+
+/* ---------- agents ---------- */
+#agents{right:20px;top:86px;width:min(400px,32vw);max-height:42vh;display:flex;
+  flex-direction:column;overflow:hidden}
+#alist{flex:1;overflow-y:auto;padding:8px}
+#alist::-webkit-scrollbar{width:5px}
+#alist::-webkit-scrollbar-thumb{background:var(--edge);border-radius:3px}
+.ag{display:grid;grid-template-columns:9px 1fr auto;gap:9px;align-items:center;
+  padding:7px 9px;border-radius:7px;margin-bottom:4px;
+  border:1px solid transparent;transition:.2s}
+.ag.working{background:rgba(34,211,238,.07);border-color:rgba(34,211,238,.3)}
+.ag.blocked{background:rgba(255,176,32,.06)}
+.ag.down{background:rgba(244,63,94,.07)}
+.led{width:8px;height:8px;border-radius:50%;background:var(--mut)}
+.ag.idle .led{background:var(--green);box-shadow:0 0 7px var(--green)}
+.ag.working .led{background:var(--cyan);box-shadow:0 0 11px var(--cyan);
+  animation:pulse 1s infinite}
+.ag.blocked .led{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.ag.down .led{background:var(--red);box-shadow:0 0 8px var(--red)}
+.ag .nm{font-size:11px;color:#fff;letter-spacing:1.3px}
+.ag .rl{font-size:9.5px;color:var(--mut);margin-top:1px}
+.ag .tk{font-size:9.5px;color:var(--cyan);margin-top:2px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.ag .num{text-align:right;font-size:10px;color:var(--mut);line-height:1.5}
+.ag .num b{display:block;color:var(--fg);font-size:12px}
+
+/* ---------- queue ---------- */
+#queue{right:20px;top:calc(86px + 42vh + 12px);bottom:20px;
+  width:min(400px,32vw);display:flex;flex-direction:column;overflow:hidden}
+#qlist{flex:1;overflow-y:auto;padding:11px}
+#qlist::-webkit-scrollbar{width:5px}
+#qlist::-webkit-scrollbar-thumb{background:var(--edge);border-radius:3px}
+.card{border:1px solid var(--edge);border-radius:8px;padding:11px;margin-bottom:10px;
+  background:rgba(13,21,36,.6)}
+.card .k{font-size:9px;letter-spacing:1.6px;color:var(--amber);margin-bottom:5px}
+.card .ti{font-size:11.5px;color:#fff;margin-bottom:7px;line-height:1.45}
+.card .bd{font-size:11px;color:var(--mut);line-height:1.6;max-height:96px;
+  overflow:hidden;white-space:pre-wrap;margin-bottom:9px}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+button{font:inherit;font-size:10px;letter-spacing:1.1px;padding:6px 11px;
+  border-radius:6px;border:1px solid var(--edge);background:transparent;
+  color:var(--fg);cursor:pointer;transition:.15s}
+button:hover{background:rgba(34,211,238,.14);border-color:var(--cyan)}
+button.ok{border-color:rgba(52,211,153,.45);color:var(--green)}
+button.ok:hover{background:rgba(52,211,153,.16)}
+button.no{border-color:rgba(244,63,94,.4);color:var(--red)}
+button.no:hover{background:rgba(244,63,94,.14)}
+.empty{color:var(--mut);font-size:11px;text-align:center;padding:34px 14px;line-height:1.7}
+
+/* ---------- alert ---------- */
+#alert{left:50%;transform:translateX(-50%);bottom:20px;z-index:5;max-width:520px;
+  padding:13px 18px;border-color:rgba(255,176,32,.45);font-size:11.5px;
+  line-height:1.65;color:var(--amber);display:none}
+#alert b{color:#fff}
+/* ---------- showcase ---------- */
+#show{left:20px;top:86px;width:min(300px,26vw);padding:14px 16px}
+#show .eb{font-size:9px;letter-spacing:2px;color:var(--cyan);margin-bottom:6px}
+#show h4{margin:0 0 5px;font-size:13px;color:#fff}
+#show p{margin:0 0 10px;font-size:10.5px;color:var(--mut);line-height:1.55}
+#show a{font-size:10px;color:var(--cyan);text-decoration:none;letter-spacing:1px}
+#show a:hover{text-decoration:underline}
+
+@media(max-width:1200px){#show{display:none}}
+@media(max-width:960px){#queue,#term,#agents{display:none}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="scan"></div><div class="vig"></div>
+
+<div class="hud panel" id="top" style="border-radius:0">
+  <div>
+    <div class="brand">AETHER<span>//</span>ENGINE</div>
+    <div class="sub" id="status"><span class="dot"></span>INITIALISING</div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="s-sig">0</b><i>SIGNALS</i></div>
+    <div class="stat"><b id="s-hot">0</b><i>HOT</i></div>
+    <div class="stat amber"><b id="s-draft">0</b><i>QUEUE</i></div>
+    <div class="stat"><b id="s-page">0</b><i>PAGES</i></div>
+    <div class="stat green"><b id="s-rev">$0</b><i>REVENUE</i></div>
+    <div class="stat"><b id="s-up">0h</b><i>UPTIME</i></div>
+  </div>
+</div>
+
+<div class="hud panel" id="term">
+  <div class="ph"><span>LIVE AGENT FEED</span><span id="llm">—</span></div>
+  <div id="feed"></div>
+</div>
+
+<div class="hud panel" id="agents">
+  <div class="ph"><span>AGENT ROSTER</span><span id="an">0 ACTIVE</span></div>
+  <div id="alist"><div class="empty">Booting agents…</div></div>
+</div>
+
+<div class="hud panel" id="queue">
+  <div class="ph"><span>APPROVAL QUEUE</span><span id="qn">0</span></div>
+  <div id="qlist"><div class="empty">Waiting for the first cycle…</div></div>
+</div>
+
+<div class="hud panel" id="show" style="display:none">
+  <div class="eb">HIGH-TICKET FUNNEL</div>
+  <h4 id="sh-name">—</h4>
+  <p id="sh-desc">Every published page links here. The $14 toolkit converts
+  strangers; this converts the few who want the builder, not the template.</p>
+  <a id="sh-link" href="#" target="_blank" rel="noopener">OPEN LIVE DEMO →</a>
+</div>
+
+<div class="hud panel" id="alert"></div>
+
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const STAGES = ['HARVEST','SCORE','SYNTH','APPROVE','PUBLISH','REVENUE'];
+let state = null;
+
+/* ==================================================================
+   3D SCENE
+   ================================================================== */
+const Scene = (() => {
+  let renderer, scene, camera, nodes = [], flows = [], bars = [], t = 0, ok = false;
+
+  function label(text, color = '#22d3ee') {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 64;
+    const x = c.getContext('2d');
+    x.fillStyle = color; x.font = 'bold 30px monospace';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.shadowColor = color; x.shadowBlur = 14;
+    x.fillText(text, 128, 32);
+    const tex = new THREE.CanvasTexture(c);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthWrite: false }));
+    spr.scale.set(7, 1.75, 1);
+    return spr;
+  }
+
+  function init() {
+    if (typeof THREE === 'undefined') return false;
+    const canvas = $('#gl');
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    } catch (e) { return false; }
+
+    // The pane can be hidden at boot, where innerWidth reports 0. Falling back
+    // keeps the renderer from initialising to a 0x0 buffer it never recovers from.
+    const W = () => innerWidth || document.documentElement.clientWidth || 1280;
+    const H = () => innerHeight || document.documentElement.clientHeight || 800;
+
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(W(), H());
+
+    scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x05070d, 0.021);
+
+    camera = new THREE.PerspectiveCamera(58, W() / H(), 0.1, 400);
+    camera.position.set(0, 15, 40);
+
+    // --- floor grid -------------------------------------------------
+    const grid = new THREE.GridHelper(180, 60, 0x22d3ee, 0x0d1524);
+    grid.material.transparent = true; grid.material.opacity = 0.26;
+    grid.position.y = -9;
+    scene.add(grid);
+
+    // --- ambient starfield ------------------------------------------
+    const sp = new Float32Array(1400 * 3);
+    for (let i = 0; i < 1400; i++) {
+      sp[i*3]   = (Math.random() - 0.5) * 260;
+      sp[i*3+1] = (Math.random() - 0.5) * 130;
+      sp[i*3+2] = (Math.random() - 0.5) * 260;
+    }
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+    scene.add(new THREE.Points(sg, new THREE.PointsMaterial({
+      color: 0x22d3ee, size: 0.32, transparent: true, opacity: 0.42 })));
+
+    // --- pipeline nodes ---------------------------------------------
+    const N = STAGES.length, span = 40;
+    STAGES.forEach((name, i) => {
+      const x = -span / 2 + (span / (N - 1)) * i;
+      const isLast = i === N - 1;
+      const col = isLast ? 0x34d399 : (i === 3 ? 0xffb020 : 0x22d3ee);
+
+      const core = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(1.7, 1),
+        new THREE.MeshBasicMaterial({ color: col, wireframe: true })
+      );
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(2.5, 20, 20),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true,
+          opacity: 0.09, side: THREE.BackSide })
+      );
+      const g = new THREE.Group();
+      g.add(core); g.add(halo);
+      g.position.set(x, 0, 0);
+
+      const lab = label(name, isLast ? '#34d399' : (i === 3 ? '#ffb020' : '#22d3ee'));
+      lab.position.set(x, 4.4, 0);
+      scene.add(lab);
+
+      g.userData = { core, halo, base: 1, load: 0, phase: i * 0.7 };
+      scene.add(g);
+      nodes.push(g);
+
+      // edge to previous node
+      if (i > 0) {
+        const prev = nodes[i-1].position;
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(prev.x, 0, 0), new THREE.Vector3(x, 0, 0)]);
+        scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({
+          color: 0x22d3ee, transparent: true, opacity: 0.22 })));
+      }
+    });
+
+    // --- flowing data particles -------------------------------------
+    for (let seg = 0; seg < N - 1; seg++) {
+      const COUNT = 26;
+      const pos = new Float32Array(COUNT * 3);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: 0x7dd3fc, size: 0.55, transparent: true, opacity: 0.95 }));
+      pts.userData = {
+        seg,
+        from: nodes[seg].position.x,
+        to: nodes[seg+1].position.x,
+        offs: Array.from({length: COUNT}, () => Math.random())
+      };
+      scene.add(pts);
+      flows.push(pts);
+    }
+
+    // --- 24h histogram ----------------------------------------------
+    for (let i = 0; i < 24; i++) {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 1, 0.9),
+        new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true,
+          opacity: 0.45 })
+      );
+      m.position.set(-17.5 + i * 1.52, -8, 15);
+      m.userData.target = 0.4;
+      scene.add(m);
+      bars.push(m);
+    }
+
+    const resize = () => {
+      camera.aspect = W() / H();
+      camera.updateProjectionMatrix();
+      renderer.setSize(W(), H());
+    };
+    addEventListener('resize', resize);
+    // Catch the pane being revealed after load, which fires no resize event.
+    if (window.ResizeObserver) new ResizeObserver(resize).observe(document.body);
+
+    ok = true;
+    return true;
+  }
+
+  function pulse(stageIdx) {
+    const n = nodes[stageIdx];
+    if (n) n.userData.load = Math.min(n.userData.load + 1, 4);
+  }
+
+  function setHistogram(vals) {
+    const max = Math.max(1, ...vals);
+    bars.forEach((b, i) => { b.userData.target = 0.4 + (vals[i] || 0) / max * 9; });
+  }
+
+  function frame() {
+    requestAnimationFrame(frame);
+    if (!ok) return;
+    t += 0.01;
+
+    nodes.forEach((n, i) => {
+      const d = n.userData;
+      d.core.rotation.x += 0.004 + d.load * 0.012;
+      d.core.rotation.y += 0.006 + d.load * 0.016;
+      const s = 1 + Math.sin(t * 2 + d.phase) * 0.06 + d.load * 0.12;
+      n.scale.setScalar(s);
+      d.halo.material.opacity = 0.09 + d.load * 0.06;
+      d.load *= 0.985;
+      n.position.y = Math.sin(t * 1.3 + d.phase) * 0.45;
+    });
+
+    flows.forEach(f => {
+      const { from, to, offs } = f.userData;
+      const arr = f.geometry.attributes.position.array;
+      const speed = 0.0055 + (state?.pipeline?.signals_24h || 0) / 12000;
+      for (let i = 0; i < offs.length; i++) {
+        offs[i] = (offs[i] + speed) % 1;
+        const p = offs[i];
+        arr[i*3]   = from + (to - from) * p;
+        arr[i*3+1] = Math.sin(p * Math.PI) * 1.5 + Math.sin(t*3 + i) * 0.16;
+        arr[i*3+2] = Math.cos(t * 1.6 + i * 0.55) * 0.5;
+      }
+      f.geometry.attributes.position.needsUpdate = true;
+    });
+
+    bars.forEach(b => {
+      const h = b.scale.y + (b.userData.target - b.scale.y) * 0.07;
+      b.scale.y = h;
+      b.position.y = -8 + h / 2;
+    });
+
+    const r = 42;
+    camera.position.x = Math.sin(t * 0.11) * 9;
+    camera.position.z = r + Math.cos(t * 0.11) * 5;
+    camera.position.y = 14 + Math.sin(t * 0.17) * 3;
+    camera.lookAt(0, 0, 0);
+
+    renderer.render(scene, camera);
+  }
+
+  return { init, frame, pulse, setHistogram, alive: () => ok };
+})();
+
+/* -- graceful degradation: 2D canvas grid if WebGL/three is unavailable -- */
+function fallback2D() {
+  const c = $('#gl'), x = c.getContext('2d');
+  let t = 0;
+  const resize = () => { c.width = innerWidth; c.height = innerHeight; };
+  addEventListener('resize', resize); resize();
+  (function loop() {
+    requestAnimationFrame(loop);
+    t += 0.012;
+    x.fillStyle = '#05070d'; x.fillRect(0, 0, c.width, c.height);
+    x.strokeStyle = 'rgba(34,211,238,.14)'; x.lineWidth = 1;
+    const g = 46;
+    for (let i = 0; i < c.width; i += g) {
+      x.beginPath(); x.moveTo(i, 0); x.lineTo(i, c.height); x.stroke();
+    }
+    for (let j = 0; j < c.height; j += g) {
+      x.beginPath(); x.moveTo(0, j); x.lineTo(c.width, j); x.stroke();
+    }
+    const cy = c.height / 2, n = STAGES.length;
+    for (let i = 0; i < n; i++) {
+      const px = c.width * (0.13 + 0.74 * i / (n - 1));
+      const r = 17 + Math.sin(t * 2 + i) * 3;
+      x.beginPath(); x.arc(px, cy, r, 0, 7);
+      x.strokeStyle = i === n - 1 ? '#34d399' : '#22d3ee'; x.stroke();
+      x.fillStyle = 'rgba(34,211,238,.6)'; x.font = '11px monospace';
+      x.textAlign = 'center'; x.fillText(STAGES[i], px, cy + 42);
+      if (i < n - 1) {
+        const nx = c.width * (0.13 + 0.74 * (i + 1) / (n - 1));
+        for (let k = 0; k < 4; k++) {
+          const p = ((t * 0.42 + k / 4 + i * 0.2) % 1);
+          x.beginPath(); x.arc(px + (nx - px) * p, cy, 2.6, 0, 7);
+          x.fillStyle = '#7dd3fc'; x.fill();
+        }
+      }
+    }
+  })();
+}
+
+/* ==================================================================
+   DATA
+   ================================================================== */
+const money = c => '$' + (c / 100).toFixed(c % 100 ? 2 : 0);
+
+function renderState(s) {
+  state = s;
+  $('#s-sig').textContent   = s.pipeline.signals_total;
+  $('#s-hot').textContent   = s.pipeline.signals_hot;
+  $('#s-draft').textContent = s.pipeline.drafts;
+  $('#s-page').textContent  = s.pipeline.pages;
+  $('#s-rev').textContent   = money(s.revenue.total_cents || 0);
+
+  const h = Math.floor(s.uptime / 3600), m = Math.floor(s.uptime % 3600 / 60);
+  $('#s-up').textContent = h ? h + 'h' : m + 'm';
+  $('#llm').textContent = s.llm.toUpperCase();
+
+  const bad = s.health.open_errors > 0;
+  $('#status').innerHTML =
+    `<span class="dot${bad ? ' bad' : ''}"></span>` +
+    (bad ? `${s.health.open_errors} ERROR(S) · SELF-HEALING`
+         : 'OPERATIONAL · ALL SYSTEMS NOMINAL');
+
+  if (Scene.alive()) Scene.setHistogram(s.pipeline.histogram || []);
+  renderAgents(s.agents || []);
+
+  if (s.showcase && s.showcase.enabled) {
+    $('#show').style.display = 'block';
+    $('#sh-name').textContent = s.showcase.name;
+    $('#sh-link').href = s.showcase.url;
+  }
+
+  if (!s.product.checkout_configured) {
+    const a = $('#alert');
+    a.style.display = 'block';
+    a.innerHTML = '<b>CHECKOUT_URL is not set.</b> The engine is running and ' +
+      'publishing, but every buy button points nowhere &mdash; revenue cannot ' +
+      'move off $0 until you add a real payment link to <b>.env</b> and restart.';
+  } else {
+    $('#alert').style.display = 'none';
+  }
+}
+
+function renderAgents(list) {
+  const el = $('#alist');
+  if (!list.length) return;
+  const active = list.filter(a => a.status === 'working').length;
+  $('#an').textContent = active ? `${active} WORKING` : `${list.length} STANDING BY`;
+
+  el.innerHTML = list.map(a => {
+    const task = a.status === 'working'
+      ? `${escapeHtml(a.task)}${a.elapsed > 1 ? ` · ${a.elapsed.toFixed(0)}s` : ''}`
+      : (a.status === 'blocked' ? 'backing off after an error'
+        : (a.status === 'down' ? 'quarantined — needs a look' : 'standing by'));
+    return `<div class="ag ${a.status}">
+      <div class="led"></div>
+      <div>
+        <div class="nm">${escapeHtml(a.name)}</div>
+        <div class="rl">${escapeHtml(a.role)}</div>
+        <div class="tk">${task}</div>
+      </div>
+      <div class="num"><b>${a.output}</b>made<br>${a.runs} runs</div>
+    </div>`;
+  }).join('');
+
+  // Light up the matching 3D node for whoever is working.
+  if (Scene.alive()) {
+    const map = {scout:0, analyst:1, scribe:2, architect:2, herald:4, ledger:5};
+    list.filter(a => a.status === 'working')
+        .forEach(a => { if (map[a.key] !== undefined) Scene.pulse(map[a.key]); });
+  }
+}
+
+function line(e) {
+  const feed = $('#feed');
+  const div = document.createElement('div');
+  div.className = 'lv-' + (e.level || 'info');
+  const ts = new Date(e.ts * 1000).toTimeString().slice(0, 8);
+  div.innerHTML = `<span class="t">${ts}</span> ` +
+                  `<span class="m">${e.module}</span> ` +
+                  `<span class="x">${escapeHtml(e.message)}</span>`;
+  feed.appendChild(div);
+  while (feed.children.length > 220) feed.removeChild(feed.firstChild);
+  feed.scrollTop = feed.scrollHeight;
+
+  const idx = { sources: 0, scorer: 1, generator: 2, publisher: 4, revenue: 5 }[e.module];
+  if (idx !== undefined && Scene.alive()) Scene.pulse(idx);
+}
+
+const escapeHtml = s => String(s).replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function loadQueue() {
+  try {
+    const items = await (await fetch('/api/queue')).json();
+    const list = $('#qlist');
+    $('#qn').textContent = items.length;
+    if (!items.length) {
+      list.innerHTML = '<div class="empty">Nothing awaiting approval.<br>' +
+        'Drafts appear here as the engine finds high-intent posts.</div>';
+      return;
+    }
+    list.innerHTML = items.map(it => `
+      <div class="card" data-id="${it.id}">
+        <div class="k">${(it.kind || '').toUpperCase()} · ${(it.platform || '').toUpperCase()}${
+          it.score ? ' · SCORE ' + Number(it.score).toFixed(1) : ''}</div>
+        <div class="ti">${escapeHtml(it.title || '')}</div>
+        <div class="bd">${escapeHtml(it.body || '')}</div>
+        <div class="row">
+          <button class="ok" data-a="approve">APPROVE</button>
+          <button data-a="copy">COPY</button>
+          ${it.signal_url ? `<button data-a="open">OPEN POST</button>` : ''}
+          <button class="no" data-a="reject">REJECT</button>
+        </div>
+      </div>`).join('');
+
+    list.querySelectorAll('button').forEach(b => {
+      b.onclick = () => act(b.dataset.a, b.closest('.card'),
+                           items.find(i => i.id == b.closest('.card').dataset.id));
+    });
+  } catch (e) { /* server restarting; next poll picks it up */ }
+}
+
+async function act(action, card, item) {
+  const id = Number(card.dataset.id);
+  if (action === 'copy') {
+    navigator.clipboard.writeText(item.body || '');
+    const b = card.querySelector('[data-a=copy]');
+    b.textContent = 'COPIED'; setTimeout(() => b.textContent = 'COPY', 1400);
+    return;
+  }
+  if (action === 'open') { open(item.signal_url, '_blank'); return; }
+  await fetch('/api/' + action, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id })
+  });
+  card.style.opacity = '.25';
+  setTimeout(loadQueue, 350);
+}
+
+function connect() {
+  const es = new EventSource('/api/stream');
+  es.onmessage = e => { try { line(JSON.parse(e.data)); } catch (_) {} };
+  es.onerror = () => { es.close(); setTimeout(connect, 4000); };
+}
+
+async function poll() {
+  try { renderState(await (await fetch('/api/state')).json()); } catch (_) {}
+}
+
+/* ---------------- boot ---------------- */
+if (Scene.init()) Scene.frame(); else fallback2D();
+poll(); loadQueue(); connect();
+setInterval(poll, 5000);
+setInterval(loadQueue, 15000);
+(async () => {
+  try {
+    const s = await (await fetch('/api/state')).json();
+    (s.events || []).slice().reverse().forEach(line);
+  } catch (_) {}
+})();
+</script>
+</body>
+</html>
