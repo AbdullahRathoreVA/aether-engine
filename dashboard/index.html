@@ -107,6 +107,46 @@ button.no{border-color:rgba(244,63,94,.4);color:var(--red)}
 button.no:hover{background:rgba(244,63,94,.14)}
 .empty{color:var(--mut);font-size:11px;text-align:center;padding:34px 14px;line-height:1.7}
 
+/* ---------- today / blockers ---------- */
+#today{position:fixed;z-index:12;left:50%;transform:translateX(-50%);top:86px;
+  width:min(680px,94vw);max-height:78vh;display:none;flex-direction:column;
+  overflow:hidden}
+#today.on{display:flex}
+#tbody{overflow-y:auto;padding:14px 18px}
+#tbody::-webkit-scrollbar{width:5px}
+#tbody::-webkit-scrollbar-thumb{background:var(--edge);border-radius:3px}
+.blk{border:1px solid rgba(244,63,94,.4);background:rgba(244,63,94,.07);
+  border-radius:10px;padding:15px 17px;margin-bottom:12px}
+.blk.high{border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.06)}
+.blk.medium{border-color:var(--edge);background:rgba(34,211,238,.05)}
+.blk .h{font-size:12.5px;color:#fff;margin-bottom:6px;font-weight:600}
+.blk .d{font-size:11px;color:var(--mut);line-height:1.65;margin-bottom:9px}
+.blk .a{font-size:11px;color:var(--cyan);line-height:1.6}
+.blk .w{font-size:10.5px;color:var(--red);margin-top:6px}
+.blk .c{font-size:10.5px;color:var(--amber);margin-top:6px;font-style:italic}
+.act{border:1px solid var(--edge);border-radius:9px;padding:12px 14px;
+  margin-bottom:9px;background:rgba(13,21,36,.5)}
+.act .top{display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:6px;gap:10px}
+.act .lb{font-size:10px;letter-spacing:1.3px;color:var(--amber)}
+.act.p2 .lb{color:var(--cyan)} .act.p3 .lb{color:var(--mut)}
+.act .mn{font-size:9.5px;color:var(--mut);white-space:nowrap}
+.act .ti{font-size:11.5px;color:#fff;margin-bottom:5px;line-height:1.45}
+.act .wh{font-size:10px;color:var(--mut);margin-bottom:8px;line-height:1.55}
+.act .bd{font-size:10.5px;color:var(--mut);white-space:pre-wrap;max-height:70px;
+  overflow:hidden;margin-bottom:9px;padding:8px 10px;
+  background:rgba(0,0,0,.28);border-radius:6px}
+.tsum{padding:12px 18px;border-bottom:1px solid var(--edge);font-size:11px;
+  color:var(--mut);line-height:1.6}
+.tsum b{color:var(--cyan)}
+.big{font-size:26px;color:var(--amber);display:block;margin-bottom:2px}
+#tbtn{position:fixed;z-index:11;left:50%;transform:translateX(-50%);top:92px;
+  background:var(--amber);color:#111;font-weight:700;font-size:11px;
+  letter-spacing:1.4px;padding:9px 22px;border-radius:20px;border:none;
+  cursor:pointer;box-shadow:0 4px 22px rgba(255,176,32,.35)}
+#tbtn:hover{filter:brightness(1.08)}
+#tbtn.hidden{display:none}
+
 /* ---------- alert ---------- */
 #alert{left:50%;transform:translateX(-50%);bottom:20px;z-index:5;max-width:520px;
   padding:13px 18px;border-color:rgba(255,176,32,.45);font-size:11.5px;
@@ -236,6 +276,18 @@ button.no:hover{background:rgba(244,63,94,.14)}
   <p id="sh-desc">Every published page links here. The $14 toolkit converts
   strangers; this converts the few who want the builder, not the template.</p>
   <a id="sh-link" href="#" target="_blank" rel="noopener">OPEN LIVE DEMO →</a>
+</div>
+
+<button id="tbtn" class="hidden">▲ WHAT NEEDS YOU TODAY</button>
+
+<div class="hud panel" id="today">
+  <div class="ph">
+    <span>YOUR 5% &mdash; EVERYTHING ELSE IS AUTOMATED</span>
+    <button id="tclose" style="border:none;background:none;color:var(--mut);
+      font-size:17px;cursor:pointer;padding:0 4px">&times;</button>
+  </div>
+  <div class="tsum" id="tsum">Loading…</div>
+  <div id="tbody"></div>
 </div>
 
 <div class="hud panel" id="alert"></div>
@@ -593,6 +645,31 @@ function line(e) {
 const escapeHtml = s => String(s).replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+/* Clipboard with a fallback: navigator.clipboard is unavailable outside a
+   secure context and can be permission-denied. Returns true if the text landed. */
+function copyText(text) {
+  try {
+    if (navigator.clipboard && isSecureContext) {
+      navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
+      return true;
+    }
+  } catch (e) { /* fall through */ }
+  return legacyCopy(text);
+}
+
+function legacyCopy(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
+}
+
 async function loadQueue() {
   try {
     const items = await (await fetch('/api/queue')).json();
@@ -627,9 +704,9 @@ async function loadQueue() {
 async function act(action, card, item) {
   const id = Number(card.dataset.id);
   if (action === 'copy') {
-    navigator.clipboard.writeText(item.body || '');
     const b = card.querySelector('[data-a=copy]');
-    b.textContent = 'COPIED'; setTimeout(() => b.textContent = 'COPY', 1400);
+    b.textContent = copyText(item.body || '') ? 'COPIED' : 'COPY FAILED';
+    setTimeout(() => b.textContent = 'COPY', 1400);
     return;
   }
   if (action === 'open') { open(item.signal_url, '_blank'); return; }
@@ -640,6 +717,91 @@ async function act(action, card, item) {
   card.style.opacity = '.25';
   setTimeout(loadQueue, 350);
 }
+
+/* ---------------- today: the 5% that needs a human ---------------- */
+async function loadDigest() {
+  let d;
+  try { d = await (await fetch('/api/digest')).json(); } catch (e) { return; }
+
+  const need = d.blockers.length + d.actions.length;
+  $('#tbtn').classList.toggle('hidden', need === 0 || $('#today').classList.contains('on'));
+  if (need) {
+    $('#tbtn').textContent =
+      `▲ ${need} THING${need > 1 ? 'S' : ''} NEED YOU · ${d.minutes_total + d.blocker_minutes} MIN`;
+  }
+
+  $('#tsum').innerHTML = d.earning_possible
+    ? `<span class="big">${d.minutes_total} min</span>` +
+      `<b>${d.counts.outreach}</b> outreach · <b>${d.counts.replies}</b> replies · ` +
+      `<b>${d.counts.posts}</b> posts. The engine wrote all of it. You send it.`
+    : `<span class="big">$0</span>Nothing you do below can earn until the ` +
+      `payment link exists. That step is legally yours &mdash; payout accounts ` +
+      `require a verified person, so no software can do it for you.`;
+
+  const blk = d.blockers.map(b => `
+    <div class="blk ${b.severity === 'critical' ? '' : b.severity}">
+      <div class="h">${escapeHtml(b.title)}</div>
+      <div class="d">${escapeHtml(b.detail)}</div>
+      <div class="a">→ ${escapeHtml(b.action)} <span style="color:var(--mut)">(~${b.minutes} min)</span></div>
+      ${b.warning ? `<div class="w">⚠ ${escapeHtml(b.warning)}</div>` : ''}
+      ${b.cost_note ? `<div class="c">${escapeHtml(b.cost_note)}</div>` : ''}
+    </div>`).join('');
+
+  const acts = d.actions.map(a => `
+    <div class="act p${a.priority}" data-id="${a.id}">
+      <div class="top">
+        <span class="lb">${escapeHtml(a.label)}</span>
+        <span class="mn">~${a.minutes} min</span>
+      </div>
+      <div class="ti">${escapeHtml(a.title || '')}</div>
+      <div class="wh">${escapeHtml(a.why)}</div>
+      <div class="bd">${escapeHtml(a.body || '')}</div>
+      <div class="row">
+        ${a.url ? `<button class="ok" data-go="1">COPY + OPEN POST</button>`
+                : `<button class="ok" data-go="1">COPY TEXT</button>`}
+        <button data-done="1">MARK SENT</button>
+        <button class="no" data-skip="1">SKIP</button>
+      </div>
+    </div>`).join('');
+
+  $('#tbody').innerHTML = blk + (acts ||
+    (d.actions.length === 0 && d.blockers.length === 0
+      ? '<div class="empty">Nothing needs you. The engine is running.</div>'
+      : ''));
+
+  $('#tbody').querySelectorAll('.act').forEach(card => {
+    const id = Number(card.dataset.id);
+    const item = d.actions.find(x => x.id === id);
+    card.querySelector('[data-go]').onclick = async () => {
+      // One motion: text on the clipboard, post open in a new tab, ready to
+      // paste. The clipboard API throws without a secure context or permission,
+      // so it must never be allowed to block opening the post.
+      const b = card.querySelector('[data-go]');
+      b.textContent = copyText(item.body || '') ? 'COPIED — PASTE IT'
+                                                : 'SELECT + COPY BELOW';
+      if (item.url) open(item.url, '_blank');
+    };
+    card.querySelector('[data-done]').onclick = async () => {
+      await fetch('/api/posted', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      card.style.opacity = '.25'; setTimeout(loadDigest, 400);
+    };
+    card.querySelector('[data-skip]').onclick = async () => {
+      await fetch('/api/reject', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      card.style.opacity = '.25'; setTimeout(loadDigest, 400);
+    };
+  });
+}
+
+$('#tbtn').onclick = () => {
+  $('#today').classList.add('on'); $('#tbtn').classList.add('hidden'); loadDigest();
+};
+$('#tclose').onclick = () => { $('#today').classList.remove('on'); loadDigest(); };
 
 /* ---------------- agent chat ---------------- */
 let current = null;
@@ -726,9 +888,10 @@ async function poll() {
 
 /* ---------------- boot ---------------- */
 if (Scene.init()) Scene.frame(); else fallback2D();
-poll(); loadQueue(); connect();
+poll(); loadQueue(); loadDigest(); connect();
 setInterval(poll, 5000);
 setInterval(loadQueue, 15000);
+setInterval(loadDigest, 20000);
 (async () => {
   try {
     const s = await (await fetch('/api/state')).json();

@@ -12,7 +12,8 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import agents, config, db, healer, leads, llm, publisher, revenue
+from . import (agents, config, db, digest, healer, leads, llm, publisher,
+               revenue)
 
 DASHBOARD = config.ROOT / "dashboard"
 
@@ -111,6 +112,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/queue":
             return self._json(publisher.queue())
 
+        if path == "/api/digest":
+            return self._json(digest.summary())
+
         if path == "/api/stream":
             return self._stream()
 
@@ -175,6 +179,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/posted" and cid:
             publisher.mark_posted(cid, payload.get("url", ""))
             return self._json({"ok": True})
+
+        if path == "/api/approve_all":
+            kind = str(payload.get("kind", ""))
+            rows = db.q(
+                "SELECT id FROM content WHERE status='draft'" +
+                (" AND kind=?" if kind else ""), (kind,) if kind else ())
+            for r in rows:
+                publisher.approve(r["id"])
+            return self._json({"ok": True, "approved": len(rows)})
 
         if path == "/api/chat":
             key = str(payload.get("agent", ""))
