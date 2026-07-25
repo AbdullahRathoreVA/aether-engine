@@ -6,7 +6,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = ROOT / "state"
-SITE_DIR = ROOT / "site"
+# GitHub Pages only serves from the repo root or /docs - not an arbitrary
+# folder - so the generated site lives in docs/ to be publishable as-is.
+SITE_DIR = ROOT / "docs"
 PATCH_DIR = ROOT / "state" / "patches"
 DB_PATH = STATE_DIR / "aether.db"
 

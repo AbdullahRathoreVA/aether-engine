@@ -108,7 +108,7 @@ if ($hasGh) {
     Step "Enabling GitHub Pages (main /site)"
     $slug = (gh repo view --json nameWithOwner -q .nameWithOwner 2>$null)
     if ($slug) {
-        gh api -X POST "repos/$slug/pages" -f "source[branch]=main" -f "source[path]=/site" 2>$null | Out-Null
+        gh api -X POST "repos/$slug/pages" -f "source[branch]=main" -f "source[path]=/docs" 2>$null | Out-Null
         $user = $slug.Split('/')[0]
         $name = $slug.Split('/')[1]
         $url  = "https://$user.github.io/$name"
