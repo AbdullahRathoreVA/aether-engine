@@ -16,7 +16,7 @@ from __future__ import annotations
 import html
 import time
 
-from . import config, db
+from . import brain, config, db
 
 
 def publish_pages() -> int:
@@ -163,10 +163,32 @@ def queue(limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _teach(content_id: int, label: int) -> None:
+    """Turn a human decision into a training example.
+
+    The text we learn from is the ORIGINAL post, not our draft - we are trying
+    to predict which opportunities Abdullah considers worth his time, so the
+    signal is what he was shown, not what we wrote.
+    """
+    row = db.one(
+        "SELECT c.kind, s.title, s.body, s.source, s.id AS sid "
+        "FROM content c LEFT JOIN signals s ON s.id=c.signal_id WHERE c.id=?",
+        (content_id,))
+    if not row or not row["title"]:
+        return
+    try:
+        brain.record(row["kind"] or "reply", label,
+                     f"{row['title']}\n{row['body'] or ''}",
+                     row["source"] or "", row["sid"])
+    except Exception as e:
+        db.log("brain", f"could not record training example: {e}", "warn")
+
+
 def approve(content_id: int) -> bool:
     """Mark approved. The dashboard copies the text; the human posts it."""
     db.x("UPDATE content SET status='approved' WHERE id=? AND status='draft'",
          (content_id,))
+    _teach(content_id, 1)
     db.log("publisher", f"content #{content_id} approved for posting")
     return True
 
@@ -174,6 +196,7 @@ def approve(content_id: int) -> bool:
 def reject(content_id: int) -> bool:
     db.x("UPDATE content SET status='rejected' WHERE id=? AND status='draft'",
          (content_id,))
+    _teach(content_id, 0)
     return True
 
 

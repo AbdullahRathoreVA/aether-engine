@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 
-from . import config, db, llm
+from . import brain, config, db, llm
 
 SYSTEM = (
     "You triage forum posts for a job-search product (ATS resume templates, "
@@ -80,9 +80,15 @@ def score_pending(limit: int = 40) -> int:
                 llm_score, intent = reranked
                 base = (base + llm_score) / 2
 
-        status = "scored" if base >= 2.0 else "skipped"
+        # Learned pass: once Abdullah has made enough approve/reject calls, his
+        # own taste outranks my hand-written keyword weights.
+        final, why = brain.score(f"{title}\n{body}", base, kind="reply")
+        if not intent:
+            intent = why[:120]
+
+        status = "scored" if final >= 2.0 else "skipped"
         db.x("UPDATE signals SET score=?,intent=?,status=? WHERE id=?",
-             (base, intent, status, row["id"]))
+             (final, intent, status, row["id"]))
         scored += 1
 
     hot = db.scalar("SELECT COUNT(*) FROM signals WHERE status='scored'")

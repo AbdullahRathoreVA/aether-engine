@@ -189,6 +189,21 @@ button.no:hover{background:rgba(244,63,94,.14)}
   border-radius:20px;color:var(--mut);cursor:pointer}
 .chip:hover{border-color:var(--cyan);color:var(--cyan)}
 
+/* ---------- learning panel ---------- */
+#brain{left:20px;bottom:274px;width:min(300px,26vw);padding:13px 16px}
+#brain .eb{font-size:9px;letter-spacing:2px;color:#a78bfa;margin-bottom:9px}
+.bar{height:5px;background:rgba(167,139,250,.16);border-radius:3px;
+  overflow:hidden;margin:7px 0 9px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#7c3aed,#a78bfa);
+  border-radius:3px;transition:width .6s}
+#brain .st{font-size:10.5px;color:var(--mut);line-height:1.6}
+#brain .st b{color:#c4b5fd}
+.toks{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.tok{font-size:9px;padding:3px 7px;border-radius:11px;
+  background:rgba(167,139,250,.13);color:#c4b5fd;border:1px solid rgba(167,139,250,.22)}
+.tok.neg{background:rgba(244,63,94,.1);color:#fda4af;border-color:rgba(244,63,94,.2)}
+#brain .cold{font-size:10px;color:var(--amber);line-height:1.55;margin-top:6px}
+
 /* ---------- money panel ---------- */
 #money{left:20px;top:calc(86px + 190px);width:min(300px,26vw);padding:13px 16px}
 #money .eb{font-size:9px;letter-spacing:2px;color:var(--amber);margin-bottom:9px}
@@ -242,6 +257,14 @@ button.no:hover{background:rgba(244,63,94,.14)}
 <div class="hud panel" id="queue">
   <div class="ph"><span>APPROVAL QUEUE</span><span id="qn">0</span></div>
   <div id="qlist"><div class="empty">Waiting for the first cycle…</div></div>
+</div>
+
+<div class="hud panel" id="brain">
+  <div class="eb">LEARNING FROM YOU</div>
+  <div class="bar"><i id="b-bar" style="width:0%"></i></div>
+  <div class="st" id="b-stat">Waiting for your first decisions…</div>
+  <div class="toks" id="b-toks"></div>
+  <div class="cold" id="b-cold"></div>
 </div>
 
 <div class="hud panel" id="money">
@@ -561,6 +584,36 @@ function renderState(s) {
 
   if (Scene.alive()) Scene.setHistogram(s.pipeline.histogram || []);
   renderAgents(s.agents || []);
+
+  const B = s.brain || {};
+  $('#b-bar').style.width = (B.trust_pct || 0) + '%';
+  if (B.ready) {
+    $('#b-stat').innerHTML =
+      `Trained on <b>${B.examples}</b> of your decisions · ` +
+      `<b>${B.accuracy_label}</b><br>Influence on ranking: <b>${B.trust_pct}%</b>`;
+    $('#b-cold').textContent = '';
+    $('#b-toks').innerHTML =
+      (B.learned_positive || []).slice(0, 6)
+        .map(([w]) => `<span class="tok">${escapeHtml(w)}</span>`).join('') +
+      (B.learned_negative || []).slice(0, 4)
+        .map(([w]) => `<span class="tok neg">${escapeHtml(w)}</span>`).join('');
+  } else {
+    $('#b-stat').innerHTML =
+      `<b>${B.examples || 0}</b> decisions recorded. The model stays off until ` +
+      `it has enough to be honest.`;
+    $('#b-cold').textContent =
+      `Approve or skip ${B.needs || 12} more drafts and it starts ranking by ` +
+      `your taste instead of my keyword rules.`;
+    $('#b-toks').innerHTML = '';
+  }
+
+  const P = s.prospector || {};
+  if (P.adopted_count) {
+    $('#m-hint').textContent =
+      `PROSPECTOR found ${P.adopted_count} new niche(s) in real posts: ` +
+      `${(P.adopted || []).slice(-3).join(', ')}. Matrix is now ` +
+      `${P.matrix_size} possible pages.`;
+  }
 
   const L = s.leads || {};
   $('#m-open').textContent  = L.open || 0;

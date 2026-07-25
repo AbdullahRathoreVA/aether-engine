@@ -114,6 +114,8 @@ PORT = env_int("PORT", 7717)
 AGENTS = [
     # HUNTER first: it works the lane that pays in weeks, not months.
     ("hunter",    "HUNTER",    "Service Lead Finder", "leads"),
+    ("prospector","PROSPECTOR","Opportunity Scout", "prospector"),
+    ("oracle",    "ORACLE",    "Learning Model",    "brain"),
     ("scout",     "SCOUT",     "Signal Harvester",  "sources"),
     ("analyst",   "ANALYST",   "Intent Analyst",    "scorer"),
     ("scribe",    "SCRIBE",    "Content Writer",    "generator"),
@@ -123,7 +125,8 @@ AGENTS = [
     ("medic",     "MEDIC",     "Self-Repair",       "healer"),
 ]
 
-INTERVAL_LEADS = env_int("INTERVAL_LEADS", 1200)  # 20 min
+INTERVAL_LEADS = env_int("INTERVAL_LEADS", 1200)     # 20 min
+INTERVAL_PROSPECT = env_int("INTERVAL_PROSPECT", 5400)  # 90 min
 
 # ------------------------------------------------------------------ safety ---
 # Self-healing writes to disk. It always backs up, always syntax-checks, and
