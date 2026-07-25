@@ -42,11 +42,25 @@ def _throttle(url: str) -> None:
         _last_hit[host] = time.time()
 
 
+# Authenticated API endpoints where our descriptive crawler UA is counter-
+# productive. Groq sits behind Cloudflare, which returns 403 / error 1010 on a
+# UA containing "bot" even though the request carries a valid API key and hits a
+# documented endpoint built for programmatic access. These are our own
+# authorised API calls, so we identify as an ordinary API client instead of as a
+# crawler. Public web/RSS fetching keeps the honest descriptive UA below.
+_API_HOSTS = {
+    "api.groq.com", "api.anthropic.com", "api.gumroad.com",
+    "live.dodopayments.com", "test.dodopayments.com",
+}
+_API_UA = "python-urllib/3 aether-engine"
+
+
 def fetch(url: str, *, data: bytes | None = None, headers: dict | None = None,
           method: str | None = None, retries: int = 2) -> str:
     _throttle(url)
+    host = urllib.parse.urlparse(url).netloc
     hdrs = {
-        "User-Agent": config.USER_AGENT,
+        "User-Agent": _API_UA if host in _API_HOSTS else config.USER_AGENT,
         "Accept-Encoding": "gzip",
         "Accept": "application/json, text/html;q=0.9, */*;q=0.8",
     }

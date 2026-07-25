@@ -26,7 +26,13 @@ def _load_dotenv() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, val = line.partition("=")
-        os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        # A real value must beat a blank placeholder, whichever comes first in
+        # the file. setdefault() alone let an empty `KEY=` line permanently mask
+        # a real value appended later — a silent, very confusing failure.
+        if val or key not in os.environ:
+            os.environ[key] = val
 
 
 _load_dotenv()
@@ -121,6 +127,7 @@ AGENTS = [
     ("oracle",    "ORACLE",    "Learning Model",    "brain"),
     ("mentor",    "MENTOR",    "AI Teacher",        "teacher"),
     ("evolver",   "EVOLVER",   "Self-Improvement",  "evolve"),
+    ("sentinel",  "SENTINEL",  "Reach Verifier",    "indexing"),
     ("scout",     "SCOUT",     "Signal Harvester",  "sources"),
     ("analyst",   "ANALYST",   "Intent Analyst",    "scorer"),
     ("scribe",    "SCRIBE",    "Content Writer",    "generator"),
@@ -135,6 +142,7 @@ INTERVAL_PROSPECT = env_int("INTERVAL_PROSPECT", 5400)  # 90 min
 INTERVAL_DISTILL = env_int("INTERVAL_DISTILL", 2700)    # 45 min
 INTERVAL_EVOLVE = env_int("INTERVAL_EVOLVE", 7200)      # 2 hr
 DISTILL_BATCH = env_int("DISTILL_BATCH", 10)
+INTERVAL_INDEX = env_int("INTERVAL_INDEX", 3600)        # 1 hr
 
 # ------------------------------------------------------------------ safety ---
 # Self-healing writes to disk. It always backs up, always syntax-checks, and

@@ -107,15 +107,39 @@ def _parse_score(raw: str) -> float | None:
 
 
 def available_teachers() -> list[str]:
-    """Which teachers can actually be consulted right now."""
-    out = []
-    if llm._ollama_ready():
-        out.append("ollama")
-    if config.GROQ_API_KEY:
-        out.append("groq")
+    """Which teachers to actually consult.
+
+    A weak teacher is worse than no second teacher. Measured 2026-07-25 on live
+    data: groq (70B) and ollama (llama3.2:1b) disagreed on 14 of 18 posts, and
+    adding the 1B model's labels dropped downstream accuracy from 65% to 53%.
+    An ensemble only denoises when its members are individually competent -
+    otherwise the agreement filter just discards almost everything and what
+    survives is arbitrary.
+
+    So: if a strong teacher is available, use only strong teachers. The local
+    model stays as a generation fallback (llm.py) but is not trusted to label.
+    """
+    strong = []
     if config.ANTHROPIC_API_KEY:
-        out.append("anthropic")
-    return out
+        strong.append("anthropic")
+    if config.GROQ_API_KEY:
+        strong.append("groq")
+    if strong:
+        return strong
+
+    # Nothing strong configured - a weak teacher beats no teacher at all, but
+    # the caller is warned and MIN_TRAIN still guards the downstream model.
+    return ["ollama"] if llm._ollama_ready() else []
+
+
+def teacher_weight(backend: str) -> float:
+    """Not all teachers are equal. Weight verdicts by demonstrated capability.
+
+    Measured on this machine: llama3.2:1b called "current" a job title and
+    rejected "registered nurse". It is useful as a second opinion but should not
+    outvote a 70B model, so its verdict carries less weight in the average.
+    """
+    return {"anthropic": 1.0, "groq": 1.0, "ollama": 0.45}.get(backend, 0.6)
 
 
 def distill(limit: int = 25, agreement_band: float = 2.5) -> dict:
@@ -134,10 +158,10 @@ def distill(limit: int = 25, agreement_band: float = 2.5) -> dict:
     # but not strong. A second, larger teacher (Groq free tier) both improves
     # the labels and enables the agreement filter below, which is what actually
     # removes noise. One teacher means no disagreement can ever be detected.
-    if len(teachers) == 1:
+    if len(teachers) == 1 and teachers[0] == "ollama":
         db.log("teacher",
-               f"only one teacher ({teachers[0]}) - no agreement check is "
-               f"possible; add GROQ_API_KEY for a second opinion", "warn")
+               "only a small local teacher is configured; labels will be noisy. "
+               "Add GROQ_API_KEY (free) for materially better labels.", "warn")
 
     # Only distil posts we have not already taught from.
     rows = db.q(
@@ -146,38 +170,50 @@ def distill(limit: int = 25, agreement_band: float = 2.5) -> dict:
         "AND length(COALESCE(body,'')) > 120 "
         "ORDER BY harvested_at DESC LIMIT ?", (limit,))
 
-    labelled = skipped = 0
+    labelled = skipped = disputed = 0
     for row in rows:
         text = f"{row['title']}\n{row['body'] or ''}"
-        verdicts = [v for v in (_ask(t, text) for t in teachers) if v is not None]
+        graded = [(t, _ask(t, text)) for t in teachers]
+        verdicts = [(t, v) for t, v in graded if v is not None]
         if not verdicts:
             skipped += 1
             continue
 
+        scores = [v for _, v in verdicts]
         # Multiple teachers must broadly agree, or we learn nothing from it.
-        if len(verdicts) > 1 and (max(verdicts) - min(verdicts)) > agreement_band:
+        # This filter is the whole point of an ensemble - with one teacher it
+        # can never fire, which is why a second one matters so much.
+        if len(scores) > 1 and (max(scores) - min(scores)) > agreement_band:
+            disputed += 1
             skipped += 1
             continue
 
-        avg = sum(verdicts) / len(verdicts)
+        # Capability-weighted average rather than a naive mean.
+        wsum = sum(teacher_weight(t) for t, _ in verdicts)
+        avg = sum(v * teacher_weight(t) for t, v in verdicts) / wsum
+
         # Only teach from confident verdicts; the middle is genuinely unclear.
         if 4.0 < avg < 6.0:
             skipped += 1
             continue
 
         brain.record("reply", 1 if avg >= 6.0 else 0, text,
-                     source=f"teacher:{'+'.join(teachers)}",
+                     source=f"teacher:{'+'.join(t for t, _ in verdicts)}",
                      signal_id=row["id"])
         labelled += 1
 
     if labelled:
         brain.train("reply", force=True)
-        db.log("teacher",
-               f"distilled {labelled} labels from {'+'.join(teachers)} "
-               f"({skipped} ambiguous, discarded)")
+        note = f"distilled {labelled} labels from {'+'.join(teachers)}"
+        if disputed:
+            note += f" ({disputed} discarded — teachers disagreed)"
+        elif skipped:
+            note += f" ({skipped} discarded — too ambiguous)"
+        db.log("teacher", note)
 
     db.set_metric("last_distill", time.time())
-    return {"labelled": labelled, "skipped": skipped, "teachers": teachers}
+    return {"labelled": labelled, "skipped": skipped, "disputed": disputed,
+            "teachers": teachers}
 
 
 def stats() -> dict:

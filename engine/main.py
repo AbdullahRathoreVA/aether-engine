@@ -11,9 +11,9 @@ import sys
 import time
 import webbrowser
 
-from . import (agents, brain, config, db, evolve, generator, healer, leads,
-               llm, prospector, publisher, revenue, scorer, server, sources,
-               teacher)
+from . import (agents, brain, config, db, evolve, generator, healer, indexing,
+               leads, llm, prospector, publisher, revenue, scorer, server,
+               sources, teacher)
 
 _running = True
 
@@ -80,6 +80,12 @@ def build_tasks() -> list[Task]:
                    "asking every available AI to label real posts",
                    teacher.distill, limit=config.DISTILL_BATCH)
 
+    def index_cycle():
+        # Verify what we published is actually reachable, rather than assuming.
+        agents.run("sentinel", "indexing",
+                   "checking published pages are really live",
+                   indexing.cycle)
+
     def evolve_cycle():
         # Improve own configuration - but only changes it can prove are better.
         agents.run("evolver", "evolve",
@@ -128,6 +134,7 @@ def build_tasks() -> list[Task]:
         Task("prospector", prospect_cycle, config.INTERVAL_PROSPECT),
         Task("teacher",    distill_cycle,  config.INTERVAL_DISTILL),
         Task("evolve",     evolve_cycle,   config.INTERVAL_EVOLVE),
+        Task("indexing",   index_cycle,    config.INTERVAL_INDEX),
         Task("sources",   harvest_cycle,  config.INTERVAL_HARVEST),
         Task("scorer",    score_cycle,    config.INTERVAL_SCORE),
         Task("generator", generate_cycle, config.INTERVAL_GENERATE),
@@ -144,6 +151,7 @@ def main(open_browser: bool = True) -> int:
     db.init()
     brain.init()
     evolve.init()
+    indexing.init()
     agents.init()
     db.set_metric("started_at", time.time())
     preflight()
