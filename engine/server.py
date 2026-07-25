@@ -108,6 +108,10 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             return self._file(DASHBOARD / "index.html", "text/html; charset=utf-8")
 
+        if path == "/scene.js":
+            return self._file(DASHBOARD / "scene.js",
+                              "application/javascript; charset=utf-8")
+
         if path == "/api/state":
             return self._json(snapshot())
 
