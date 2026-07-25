@@ -14,28 +14,59 @@ from __future__ import annotations
 import json
 import random
 import re
+import time
 
 from . import config, db, net
 
 _backend_cache: str | None = None
+_backend_checked: float = 0.0
+# Re-detect this often so a model that finishes downloading is picked up without
+# a restart, and a backend that dies is demoted on its own.
+_BACKEND_TTL = 180.0
+
+
+def _ollama_ready() -> bool:
+    """True only if the server is up AND the configured model is pulled.
+
+    Checking the server alone is not enough: while a model is still downloading
+    the server responds fine but generation fails with 'model not found'. We
+    verify the model is actually present so we do not thrash between Ollama and
+    templates during a pull.
+    """
+    try:
+        import json
+        raw = net.fetch(f"{config.OLLAMA_URL}/api/tags", retries=0)
+        tags = json.loads(raw)
+    except Exception:
+        return False
+
+    names = [m.get("name", "") for m in tags.get("models", [])]
+    want = config.OLLAMA_MODEL
+    # Ollama tags carry a ':tag' suffix (llama3.2:latest); match either form.
+    return any(n == want or n.split(":")[0] == want.split(":")[0] for n in names)
 
 
 def detect_backend(force: bool = False) -> str:
-    global _backend_cache
-    if _backend_cache and not force:
+    global _backend_cache, _backend_checked
+    fresh = (time.time() - _backend_checked) < _BACKEND_TTL
+    if _backend_cache and fresh and not force:
         return _backend_cache
 
-    backend = "template"
-    try:
-        net.fetch(f"{config.OLLAMA_URL}/api/tags", retries=0)
+    previous = _backend_cache
+
+    if _ollama_ready():
         backend = "ollama"
-    except Exception:
-        if config.GROQ_API_KEY:
-            backend = "groq"
-        elif config.ANTHROPIC_API_KEY:
-            backend = "anthropic"
+    elif config.GROQ_API_KEY:
+        backend = "groq"
+    elif config.ANTHROPIC_API_KEY:
+        backend = "anthropic"
+    else:
+        backend = "template"
 
     _backend_cache = backend
+    _backend_checked = time.time()
+    if previous and previous != backend:
+        db.log("llm", f"backend changed: {previous} -> {backend}", "info")
     return backend
 
 
