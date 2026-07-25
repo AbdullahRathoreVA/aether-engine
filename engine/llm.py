@@ -54,12 +54,26 @@ def detect_backend(force: bool = False) -> str:
 
     previous = _backend_cache
 
-    if _ollama_ready():
+    # Order by OUTPUT QUALITY, not by where the model happens to live.
+    #
+    # A local model is not automatically better. Measured 2026-07-25: the local
+    # llama3.2:1b accepted "current" as a job title and rejected "registered
+    # nurse". Groq's free tier serves a 70B-class model that does not make that
+    # class of mistake, costs nothing, needs no disk, and needs no GPU. On a
+    # machine with integrated graphics and 14 GB free, the cloud model wins on
+    # every axis except privacy.
+    #
+    # Set PREFER_LOCAL=1 to invert this (offline work, or private data).
+    local_ok = _ollama_ready()
+
+    if config.PREFER_LOCAL and local_ok:
         backend = "ollama"
     elif config.GROQ_API_KEY:
         backend = "groq"
     elif config.ANTHROPIC_API_KEY:
         backend = "anthropic"
+    elif local_ok:
+        backend = "ollama"
     else:
         backend = "template"
 

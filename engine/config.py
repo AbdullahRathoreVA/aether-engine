@@ -98,6 +98,9 @@ USER_AGENT = env(
 # The template path means the engine runs fully with zero keys and zero cost.
 OLLAMA_URL = env("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = env("OLLAMA_MODEL", "llama3.2")
+# Off by default: a small local model is usually WORSE than a free hosted one.
+# Turn on for offline use or when the text must not leave the machine.
+PREFER_LOCAL = env_bool("PREFER_LOCAL", False)
 GROQ_API_KEY = env("GROQ_API_KEY")
 GROQ_MODEL = env("GROQ_MODEL", "llama-3.3-70b-versatile")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
