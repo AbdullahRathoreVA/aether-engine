@@ -119,6 +119,8 @@ AGENTS = [
     ("hunter",    "HUNTER",    "Service Lead Finder", "leads"),
     ("prospector","PROSPECTOR","Opportunity Scout", "prospector"),
     ("oracle",    "ORACLE",    "Learning Model",    "brain"),
+    ("mentor",    "MENTOR",    "AI Teacher",        "teacher"),
+    ("evolver",   "EVOLVER",   "Self-Improvement",  "evolve"),
     ("scout",     "SCOUT",     "Signal Harvester",  "sources"),
     ("analyst",   "ANALYST",   "Intent Analyst",    "scorer"),
     ("scribe",    "SCRIBE",    "Content Writer",    "generator"),
@@ -130,6 +132,9 @@ AGENTS = [
 
 INTERVAL_LEADS = env_int("INTERVAL_LEADS", 1200)     # 20 min
 INTERVAL_PROSPECT = env_int("INTERVAL_PROSPECT", 5400)  # 90 min
+INTERVAL_DISTILL = env_int("INTERVAL_DISTILL", 2700)    # 45 min
+INTERVAL_EVOLVE = env_int("INTERVAL_EVOLVE", 7200)      # 2 hr
+DISTILL_BATCH = env_int("DISTILL_BATCH", 10)
 
 # ------------------------------------------------------------------ safety ---
 # Self-healing writes to disk. It always backs up, always syntax-checks, and

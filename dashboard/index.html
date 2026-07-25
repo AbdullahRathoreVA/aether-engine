@@ -237,6 +237,7 @@ a{color:var(--cyan)}
   <div class="navlab">INTELLIGENCE</div>
   <div class="nvi" data-v="universe"><span class="ic">✦</span><span class="tx">UNIVERSE</span></div>
   <div class="nvi" data-v="brain"><span class="ic">⬢</span><span class="tx">LEARNING</span></div>
+  <div class="nvi" data-v="evolve"><span class="ic">↻</span><span class="tx">EVOLUTION</span></div>
   <div class="nvi" data-v="prospect"><span class="ic">⌖</span><span class="tx">DISCOVERY</span></div>
   <div class="navsep"></div>
   <div class="navlab">REVENUE</div>
@@ -312,6 +313,26 @@ a{color:var(--cyan)}
       <div class="sm" style="margin-top:11px">Purple = you approve these.
         Red = you skip these. Learned from your clicks, not from my rules.</div>
     </div>
+  </div>
+</div>
+
+<div class="view" id="v-evolve">
+  <div class="vhead"><b>EVOLUTION</b> &middot; changes it made to itself &mdash; and the ones it rejected</div>
+  <div class="grid g3" style="margin-bottom:14px">
+    <div class="card"><h3>TAUGHT BY AI</h3><div class="big violet" id="e-ai">0</div>
+      <div class="sm" id="e-ai-s">labels learned with no clicks from you</div></div>
+    <div class="card"><h3>ADOPTED</h3><div class="big green" id="e-adopt">0</div>
+      <div class="sm">improvements it proved were better</div></div>
+    <div class="card"><h3>REJECTED</h3><div class="big" id="e-rej">0</div>
+      <div class="sm">changes that failed the test</div></div>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h3>AI TEACHERS CONSULTED</h3>
+      <div class="sm" id="e-teachers"></div>
+      <div class="sm" style="margin-top:9px;color:var(--mut)">Where teachers
+        disagree, the example is discarded rather than learned from &mdash;
+        ambiguity teaches noise.</div></div>
+    <div class="card"><h3>CHANGE LOG</h3><div class="sm" id="e-log"></div></div>
   </div>
 </div>
 
@@ -490,6 +511,27 @@ function render(s) {
     $('#b-acc').textContent = B.accuracy_label || '';
     $('#b-toks').innerHTML = '';
   }
+
+  // EVOLUTION
+  const T = s.teacher || {}, E = s.evolve || {};
+  $('#e-ai').textContent = T.from_ai || 0;
+  $('#e-ai-s').textContent = T.source_label || '';
+  $('#e-adopt').textContent = E.adopted || 0;
+  $('#e-rej').textContent = E.rejected || 0;
+  $('#e-teachers').innerHTML = (T.teachers || []).length
+    ? (T.teachers||[]).map(t => `<span class="tok">${esc(t)}</span>`).join(' ')
+    : 'No AI teacher reachable. Add GROQ_API_KEY for a second opinion — ' +
+      'two teachers that agree are far more reliable than one.';
+  $('#e-log').innerHTML = (E.recent || []).length
+    ? (E.recent||[]).map(r => {
+        const ok = r.adopted;
+        const b = ((r.before||0)*100).toFixed(0), a = ((r.after||0)*100).toFixed(0);
+        return `<div style="margin-bottom:6px">
+          <span style="color:${ok?'var(--green)':'var(--mut)'}">${ok?'ADOPTED':'rejected'}</span>
+          &nbsp;${esc(r.kind)} &nbsp;<span style="color:var(--mut)">${b}% → ${a}%</span></div>`;
+      }).join('')
+    : 'No changes attempted yet. EVOLVER runs every 2 hours and only keeps ' +
+      'what it can prove is better on held-out data.';
 
   // DISCOVERY
   const PR = s.prospector || {};

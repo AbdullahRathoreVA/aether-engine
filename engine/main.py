@@ -11,8 +11,9 @@ import sys
 import time
 import webbrowser
 
-from . import (agents, brain, config, db, generator, healer, leads, llm,
-               prospector, publisher, revenue, scorer, server, sources)
+from . import (agents, brain, config, db, evolve, generator, healer, leads,
+               llm, prospector, publisher, revenue, scorer, server, sources,
+               teacher)
 
 _running = True
 
@@ -73,6 +74,18 @@ def build_tasks() -> list[Task]:
         agents.run("hunter", "leads", "drafting outreach to the best leads",
                    leads.draft_outreach)
 
+    def distill_cycle():
+        # Learn from the AI teachers instead of waiting for a human to click.
+        agents.run("mentor", "teacher",
+                   "asking every available AI to label real posts",
+                   teacher.distill, limit=config.DISTILL_BATCH)
+
+    def evolve_cycle():
+        # Improve own configuration - but only changes it can prove are better.
+        agents.run("evolver", "evolve",
+                   "testing improvements to its own scoring",
+                   evolve.cycle)
+
     def prospect_cycle():
         agents.run("prospector", "prospector",
                    "mining live posts for niches we do not cover yet",
@@ -113,6 +126,8 @@ def build_tasks() -> list[Task]:
     return [
         Task("leads",      lead_cycle,     config.INTERVAL_LEADS),
         Task("prospector", prospect_cycle, config.INTERVAL_PROSPECT),
+        Task("teacher",    distill_cycle,  config.INTERVAL_DISTILL),
+        Task("evolve",     evolve_cycle,   config.INTERVAL_EVOLVE),
         Task("sources",   harvest_cycle,  config.INTERVAL_HARVEST),
         Task("scorer",    score_cycle,    config.INTERVAL_SCORE),
         Task("generator", generate_cycle, config.INTERVAL_GENERATE),
@@ -128,6 +143,7 @@ def main(open_browser: bool = True) -> int:
 
     db.init()
     brain.init()
+    evolve.init()
     agents.init()
     db.set_metric("started_at", time.time())
     preflight()

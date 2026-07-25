@@ -12,8 +12,8 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import (agents, brain, config, db, digest, healer, leads, llm,
-               prospector, publisher, revenue)
+from . import (agents, brain, config, db, digest, evolve, healer, leads, llm,
+               prospector, publisher, revenue, teacher)
 
 DASHBOARD = config.ROOT / "dashboard"
 
@@ -54,6 +54,8 @@ def snapshot() -> dict:
         "leads": leads.pipeline(),
         "brain": brain.stats("reply"),
         "prospector": prospector.report(),
+        "teacher": teacher.stats(),
+        "evolve": evolve.stats(),
         "pipeline": {
             "signals_total": db.scalar("SELECT COUNT(*) FROM signals"),
             "signals_hot": db.scalar(

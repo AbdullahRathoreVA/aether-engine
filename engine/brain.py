@@ -30,7 +30,10 @@ from collections import Counter, defaultdict
 
 from . import db
 
-MIN_TRAIN = 12          # below this we do not pretend to know anything
+# Raised from 12 to 20 on evidence: a 14-example model cross-validated at 100%,
+# and the same model measured 67% once it had 24 examples. The 100% was
+# small-sample noise, not skill. 12 was too low to be honest.
+MIN_TRAIN = 20
 CONFIDENT_AT = 40       # examples needed before the model fully outranks keywords
 STOPWORDS = {
     "the", "a", "an", "and", "or", "but", "is", "are", "was", "were", "be",
