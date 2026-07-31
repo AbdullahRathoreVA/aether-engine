@@ -17,7 +17,7 @@ import random
 import re
 import time
 
-from . import config, db, llm, scorer
+from . import config, db, llm, scorer, seo
 
 REPLY_SYSTEM = (
     "You are an experienced career coach answering on a public forum. You give "
@@ -130,6 +130,16 @@ text-decoration:none;padding:13px 26px;border-radius:9px}}
 .btn:hover{{filter:brightness(1.08)}}
 .show{{margin:40px 0 0;padding:22px;border:1px solid #232b3d;border-radius:12px;
 background:linear-gradient(135deg,#0f1420,#141a28)}}
+.answer{{background:#11202b;border-left:3px solid #22d3ee;border-radius:10px;
+padding:18px 22px;margin:0 0 28px;font-size:1.06rem;line-height:1.65}}
+.answer strong{{color:#fff}}
+.faq{{margin:44px 0 0}}
+.faq h3{{font-size:1.02rem;margin:22px 0 6px;color:#fff}}
+.faq p{{color:var(--mut);margin:0}}
+.related{{margin:44px 0 0;padding:22px;border:1px solid #232b3d;border-radius:12px}}
+.related h2{{margin:0 0 12px;font-size:1.05rem}}
+.related ul{{margin:0;padding-left:20px}}
+.related li{{margin:7px 0}}
 .show .eyebrow{{font-size:.72rem;letter-spacing:2px;color:#22d3ee;
 text-transform:uppercase;margin-bottom:8px}}
 .show h3{{margin:0 0 8px;font-size:1.1rem;color:#fff}}
@@ -230,14 +240,25 @@ def build_page(slug: str, title: str, role: str) -> str:
     canonical = f"{base}/{slug}.html" if base else f"{slug}.html"
     desc = (f"Practical, specific guidance for {role} job seekers. "
             f"Free guide, updated {time.strftime('%B %Y')}.")
-    words = len(re.sub(r"<[^>]+>", " ", content).split())
 
-    schema = (
-        '{"@context":"https://schema.org","@type":"Article",'
-        f'"headline":"{html.escape(title)}",'
-        f'"datePublished":"{time.strftime("%Y-%m-%d")}",'
-        f'"description":"{html.escape(desc)}"}}'
-    )
+    # Answer-first: the measured strongest AI-search factor is stating the
+    # answer in the opening sentences, so it goes above the generated body.
+    content = seo.answer_first(role, slug) + content
+
+    # FAQ pairs are rendered visibly AND as schema - answer engines cite them.
+    faqs = seo.default_faqs(role, slug)
+    if faqs:
+        qa = "".join(
+            f"<h3>{html.escape(q)}</h3><p>{html.escape(a)}</p>"
+            for q, a in faqs)
+        content += f'<section class="faq"><h2>Common questions</h2>{qa}</section>'
+
+    # Internal links: without these every page is an orphan that cannot rank.
+    content += seo.related_block(slug)
+
+    words = len(re.sub(r"<[^>]+>", " ", content).split())
+    schema = seo.build_schema(title, desc, canonical, role, faqs,
+                              time.strftime("%Y-%m-%d"))
 
     checkout = config.CHECKOUT_URL or "#checkout-not-configured"
 
