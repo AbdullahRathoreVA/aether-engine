@@ -41,7 +41,8 @@ def publish_pages() -> int:
     _write_robots()
 
     if written:
-        db.log("publisher", f"published {written} pages to site/")
+        db.log("publisher",
+               f"published {written} pages to {config.SITE_DIR.name}/")
     db.set_metric("pages_published",
                   db.scalar("SELECT COUNT(*) FROM pages WHERE published=1"))
     return written

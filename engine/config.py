@@ -71,16 +71,25 @@ CONTACT_WHATSAPP = env("CONTACT_WHATSAPP", "")
 # A $14 download and a high-ticket service funnel from the same traffic. The
 # cheap product converts strangers; the service converts the few who need more.
 # One visitor can only buy the toolkit; one visitor in a thousand hires you.
+# Titan Omega is the FLAGSHIP, not a footnote. Per his resume it is the lead
+# project: 102 agents across 12 divisions, FastAPI + Next.js 14, deployed solo.
+# It is also the proof that sells the service - a live system a prospect can
+# open and test before hiring him, which is what most freelancers cannot show.
 SHOWCASE_NAME = env("SHOWCASE_NAME", "Titan Omega")
 SHOWCASE_URL = env("SHOWCASE_URL",
                    "https://careermind2026-project-titan-omega.hf.space")
 SHOWCASE_TAGLINE = env(
     "SHOWCASE_TAGLINE",
-    "an autonomous AI command centre with 12 agent divisions, "
-    "built and deployed solo")
-SERVICE_NAME = env("SERVICE_NAME", "AI automation build-outs")
+    "a 102-agent autonomous AI operating system across 12 divisions — "
+    "designed, built and deployed solo")
+SERVICE_NAME = env("SERVICE_NAME",
+                   "AI agents, workflow automation (n8n / Make.com) and "
+                   "custom AI applications")
 SERVICE_PRICE_FROM = env("SERVICE_PRICE_FROM", "$400")
-SERVICE_CONTACT = env("SERVICE_CONTACT", "")  # email, Upwork, or WhatsApp link
+# Dodo checkout link for the Deploy-for-You service, or a mailto:. This is the
+# high-ticket half of the funnel and converts in weeks, not months.
+SERVICE_CONTACT = env("SERVICE_CONTACT",
+                      "mailto:abdullahrathore.va@gmail.com")
 SHOWCASE_ENABLED = env_bool("SHOWCASE_ENABLED", True)
 
 # ---------------------------------------------------------------- cadence ----

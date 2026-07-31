@@ -173,14 +173,15 @@ def showcase_block() -> str:
             if contact else "")
 
     return f"""<div class="show">
-  <div class="eyebrow">Built by the same person</div>
+  <div class="eyebrow">Need this built for your business?</div>
   <h3>{html.escape(config.SHOWCASE_NAME)}</h3>
-  <p>These guides are written by an autonomous system I built &mdash; and
-  {html.escape(config.SHOWCASE_NAME)} is {html.escape(config.SHOWCASE_TAGLINE)}.
-  If you need {html.escape(config.SERVICE_NAME)} for your own business, the live
-  demo is the portfolio.</p>
+  <p>This page was written and published by an autonomous system I built.
+  {html.escape(config.SHOWCASE_NAME)} is {html.escape(config.SHOWCASE_TAGLINE)}
+  &mdash; open it and test it yourself, no signup. I build
+  {html.escape(config.SERVICE_NAME)} for clients, and the live system is the
+  portfolio.</p>
   <a class="btn2" href="{html.escape(config.SHOWCASE_URL)}"
-     target="_blank" rel="noopener">See the live demo &rarr;</a>{hire}
+     target="_blank" rel="noopener">Open the live system &rarr;</a>{hire}
 </div>"""
 
 
