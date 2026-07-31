@@ -83,8 +83,12 @@ def related_links(slug: str, limit: int = 6) -> list[tuple[str, str]]:
     me_cluster = cluster_of(slug)
     me_role = role_of(slug)
 
-    rows = db.q("SELECT slug, title FROM pages WHERE published=1 AND slug != ?",
-                (slug,))
+    # ALL pages, not just published ones. During a rebuild each page is
+    # transiently set published=0, so scoping this to published=1 computes the
+    # link graph against a shrinking set and silently reintroduces orphans -
+    # observed as an orphan count that flapped between 0 and 1 across runs.
+    # A page that exists in the table will be on disk by the end of the cycle.
+    rows = db.q("SELECT slug, title FROM pages WHERE slug != ?", (slug,))
 
     same_role, same_cluster, other = [], [], []
     for r in rows:
@@ -97,22 +101,22 @@ def related_links(slug: str, limit: int = 6) -> list[tuple[str, str]]:
         else:
             other.append(pair)
 
-    picked = same_role[:3] + same_cluster[:2] + other[:2]
+    # Trim the relevance picks FIRST, then append the ring link. Appending
+    # before trimming silently dropped the ring link off the end of the slice,
+    # which is why the orphan count stayed at 1 instead of reaching 0.
+    picked = (same_role[:3] + same_cluster[:2] + other[:2])[:limit]
 
     # Guaranteed-coverage ring. Relevance-based picking alone leaves stragglers:
-    # measured 1 of 37 pages still had zero inbound links because nothing ever
-    # chose it. Every page additionally links to its successor in a stable
-    # sorted order, which makes a closed ring across the whole site - so the
-    # orphan count is structurally zero, not just usually zero.
-    all_slugs = sorted(r["slug"] for r in rows) + [slug]
-    all_slugs.sort()
-    idx = all_slugs.index(slug)
-    nxt = all_slugs[(idx + 1) % len(all_slugs)]
+    # nothing ever chooses the least-similar page. Every page additionally links
+    # to its successor in a stable sorted order, closing a ring across the whole
+    # site, so the orphan count is structurally zero rather than usually zero.
+    all_slugs = sorted([r["slug"] for r in rows] + [slug])
+    nxt = all_slugs[(all_slugs.index(slug) + 1) % len(all_slugs)]
     if nxt != slug and nxt not in {s for s, _ in picked}:
         title = next((r["title"] for r in rows if r["slug"] == nxt), nxt)
         picked.append((nxt, title))
 
-    return picked[:limit + 1]
+    return picked
 
 
 def related_block(slug: str) -> str:

@@ -126,7 +126,27 @@ def generate(prompt: str, *, system: str = "", max_tokens: int | None = None) ->
             return "".join(b.get("text", "") for b in out.get("content", [])).strip()
 
     except Exception as e:
-        db.log("llm", f"{backend} failed ({type(e).__name__}), falling back", "warn")
+        # A bare "HTTPError" is undiagnosable. Surface the status and any
+        # rate-limit headers: 12 consecutive silent failures during a bulk
+        # rebuild looked identical to a dead key, when it was almost certainly
+        # a tokens-per-minute cap that would have cleared on its own.
+        detail = type(e).__name__
+        code = getattr(e, "code", None)
+        if code:
+            detail = f"HTTP {code}"
+            try:
+                hdrs = {k.lower(): v for k, v in e.headers.items()}
+                retry = hdrs.get("retry-after")
+                remaining = (hdrs.get("x-ratelimit-remaining-tokens")
+                             or hdrs.get("x-ratelimit-remaining-requests"))
+                if code == 429:
+                    detail = (f"rate limited (429"
+                              + (f", retry after {retry}s" if retry else "")
+                              + (f", remaining {remaining}" if remaining else "")
+                              + ")")
+            except Exception:
+                pass
+        db.log("llm", f"{backend} failed: {detail} — falling back", "warn")
         # Re-detect next call: Ollama may have been started, key may have expired.
         globals()["_backend_cache"] = None
 
