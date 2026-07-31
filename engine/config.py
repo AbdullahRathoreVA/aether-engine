@@ -137,6 +137,7 @@ AGENTS = [
     ("mentor",    "MENTOR",    "AI Teacher",        "teacher"),
     ("evolver",   "EVOLVER",   "Self-Improvement",  "evolve"),
     ("sentinel",  "SENTINEL",  "Reach Verifier",    "indexing"),
+    ("portfolio", "PORTFOLIO", "Project Watch",     "projects"),
     ("scout",     "SCOUT",     "Signal Harvester",  "sources"),
     ("analyst",   "ANALYST",   "Intent Analyst",    "scorer"),
     ("scribe",    "SCRIBE",    "Content Writer",    "generator"),
@@ -152,6 +153,7 @@ INTERVAL_DISTILL = env_int("INTERVAL_DISTILL", 2700)    # 45 min
 INTERVAL_EVOLVE = env_int("INTERVAL_EVOLVE", 7200)      # 2 hr
 DISTILL_BATCH = env_int("DISTILL_BATCH", 10)
 INTERVAL_INDEX = env_int("INTERVAL_INDEX", 3600)        # 1 hr
+INTERVAL_PROJECTS = env_int("INTERVAL_PROJECTS", 7200)  # 2 hr
 
 # ------------------------------------------------------------------ safety ---
 # Self-healing writes to disk. It always backs up, always syntax-checks, and

@@ -12,7 +12,8 @@ import time
 import webbrowser
 
 from . import (agents, brain, config, db, evolve, generator, healer, indexing,
-               leads, llm, prospector, publisher, revenue, scorer, server,
+               leads, llm, projects, prospector, publisher, revenue, scorer,
+               server,
                sources, teacher)
 
 _running = True
@@ -80,6 +81,11 @@ def build_tasks() -> list[Task]:
                    "asking every available AI to label real posts",
                    teacher.distill, limit=config.DISTILL_BATCH)
 
+    def portfolio_cycle():
+        agents.run("portfolio", "projects",
+                   "discovering and probing every project you own",
+                   projects.cycle)
+
     def index_cycle():
         # Verify what we published is actually reachable, rather than assuming.
         agents.run("sentinel", "indexing",
@@ -135,6 +141,7 @@ def build_tasks() -> list[Task]:
         Task("teacher",    distill_cycle,  config.INTERVAL_DISTILL),
         Task("evolve",     evolve_cycle,   config.INTERVAL_EVOLVE),
         Task("indexing",   index_cycle,    config.INTERVAL_INDEX),
+        Task("projects",   portfolio_cycle, config.INTERVAL_PROJECTS),
         Task("sources",   harvest_cycle,  config.INTERVAL_HARVEST),
         Task("scorer",    score_cycle,    config.INTERVAL_SCORE),
         Task("generator", generate_cycle, config.INTERVAL_GENERATE),
@@ -152,6 +159,7 @@ def main(open_browser: bool = True) -> int:
     brain.init()
     evolve.init()
     indexing.init()
+    projects.init()
     agents.init()
     db.set_metric("started_at", time.time())
     preflight()
