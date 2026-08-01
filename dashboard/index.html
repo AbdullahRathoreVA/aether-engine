@@ -77,6 +77,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);overflow:hid
 .grid{display:grid;gap:13px}
 .g2{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
 .card{background:var(--panel);border:1px solid var(--edge);border-radius:11px;
   padding:15px 17px;backdrop-filter:blur(9px)}
 .card h3{margin:0 0 11px;font-size:10px;letter-spacing:2.2px;color:var(--mut);
@@ -246,6 +247,7 @@ a{color:var(--cyan)}
   <div class="nvi" data-v="pages"><span class="ic">▤</span><span class="tx">PAGES</span></div>
   <div class="navsep"></div>
   <div class="navlab">SYSTEM</div>
+  <div class="nvi" data-v="projects"><span class="ic">▣</span><span class="tx">PROJECTS</span></div>
   <div class="nvi" data-v="health"><span class="ic">✚</span><span class="tx">HEALTH</span></div>
 </div>
 
@@ -380,6 +382,22 @@ a{color:var(--cyan)}
   <div class="vhead"><b>PAGES</b> &middot; your compounding asset</div>
   <div class="card" style="margin-bottom:14px" id="pg-head"></div>
   <div id="pg-list"></div>
+</div>
+
+<div class="view" id="v-projects">
+  <div class="vhead"><b>PROJECTS</b> &middot; everything you own, discovered automatically</div>
+  <div class="grid g4" style="margin-bottom:14px">
+    <div class="card"><h3>PROJECTS</h3><div class="big" id="pj-total">0</div>
+      <div class="sm" id="pj-total-s"></div></div>
+    <div class="card"><h3>LIVE</h3><div class="big green" id="pj-live">0</div>
+      <div class="sm">answering an HTTP request right now</div></div>
+    <div class="card"><h3>DOWN</h3><div class="big" id="pj-down">0</div>
+      <div class="sm" id="pj-down-s">deployed but not responding</div></div>
+    <div class="card"><h3>STARS</h3><div class="big amber" id="pj-stars">0</div>
+      <div class="sm">across every public repo</div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px" id="pj-visitors"></div>
+  <div id="pj-list"><div class="empty">PORTFOLIO discovers repos and Spaces on its own cycle.</div></div>
 </div>
 
 <div class="view" id="v-health">
@@ -738,6 +756,60 @@ function renderLeads() {
        not a failure.</div>`;
 }
 
+/* PORTFOLIO agent already collects all of this in /api/state; until now
+   nothing displayed it. Live/down comes from an actual HTTP GET per surface —
+   "deployed" and "up" are not the same thing. Visitor counts are deliberately
+   absent: there is no honest free way to read them without analytics on each
+   site, and an invented number would be worse than none. */
+function renderProjects() {
+  const P = state?.portfolio; if (!P) return;
+
+  $('#pj-total').textContent = P.total || 0;
+  $('#pj-total-s').textContent =
+    `${P.repos||0} repos · ${P.spaces||0} Spaces · ${P.private||0} private`;
+  $('#pj-live').textContent = P.live || 0;
+  $('#pj-down').textContent = P.down || 0;
+  $('#pj-down-s').textContent = P.down
+    ? 'deployed but not responding — worth a look'
+    : 'nothing deployed is failing';
+  $('#pj-stars').textContent = P.stars || 0;
+
+  $('#pj-visitors').innerHTML =
+    `<h3>VISITORS</h3><div class="big">—</div><div class="sm">${esc(P.visitors_note||'')}</div>`;
+
+  const items = P.projects || [];
+  $('#pj-list').innerHTML = items.length ? items.map(p => {
+    // live is -1 when the surface has never been probed, so an unprobed
+    // project must not be reported as down.
+    const st = p.live === 1
+      ? `<span style="color:var(--green)">LIVE</span> · HTTP ${p.http_status} · ${
+          (p.bytes/1024).toFixed(0)}KB`
+      : (p.url
+          ? (p.live === 0
+              ? `<span style="color:var(--red)">DOWN</span>${p.note ? ' · ' + esc(p.note) : ''}`
+              : `<span style="color:var(--mut)">not probed yet</span>`)
+          : `<span style="color:var(--mut)">no public URL</span>`);
+    const pushed = p.pushed_at ? String(p.pushed_at).slice(0, 10) : '';
+    return `<div class="qc">
+      <div class="k">${esc((p.kind||'').toUpperCase())}${
+        p.language ? ' · ' + esc(p.language) : ''}${
+        p.is_private ? ' · <span style="color:var(--amber)">PRIVATE</span>' : ''}${
+        p.stars ? ' · ★ ' + p.stars : ''}${pushed ? ' · pushed ' + esc(pushed) : ''}</div>
+      <div class="ti">${esc(p.name)}</div>
+      <div class="bd">${esc(p.description || 'No description on the repo.')}</div>
+      <div class="sm" style="margin-top:6px">${st}</div>
+      <div class="sm" style="margin-top:4px">
+        ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">open site →</a>` : ''}
+        ${p.url && p.repo_url ? ' &nbsp;·&nbsp; ' : ''}
+        ${p.repo_url ? `<a href="${esc(p.repo_url)}" target="_blank" rel="noopener">repo →</a>` : ''}
+      </div>
+    </div>`;
+  }).join('')
+  : `<div class="empty">Nothing discovered yet.<br>
+     PORTFOLIO reads the GitHub and Hugging Face APIs on its own cycle — no list
+     to maintain.</div>`;
+}
+
 function renderPages() {
   const s = state; if (!s) return;
   $('#pg-head').innerHTML = s.product.site_configured
@@ -837,7 +909,7 @@ function connect() {
 async function poll() {
   try {
     render(await (await fetch('/api/state')).json());
-    renderLeads(); renderPages();
+    renderLeads(); renderPages(); renderProjects();
   } catch(_){}
 }
 poll(); loadQueue(); loadDigest(); connect();
