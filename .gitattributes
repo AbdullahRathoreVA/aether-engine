@@ -1,0 +1,35 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Preventive, not a fix for anything observed: Aether has no Dockerfile and no
+# shell scripts, so it never hit the CRLF failure that killed career-mind's
+# local container build (entrypoint died on `set: - : invalid option` while the
+# deployed Space was fine, because Hugging Face builds from a clean checkout).
+# These pins mean the first .sh or Dockerfile added here cannot introduce it.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+Makefile        text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.conf          text eol=lf
+*.template      text eol=lf
+
+# The generated site and the dashboard are served as-is; LF keeps diffs honest.
+*.html          text eol=lf
+*.js            text eol=lf
+*.css           text eol=lf
+*.py            text eol=lf
+
+# Windows-only launchers stay CRLF. The .ps1 scripts here are currently LF and
+# PowerShell reads either, so they are deliberately left to `text=auto` rather
+# than rewritten for the sake of consistency.
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+# Never let git rewrite bytes inside binaries.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.db            binary
