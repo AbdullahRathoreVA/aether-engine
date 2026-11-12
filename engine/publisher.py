@@ -185,20 +185,27 @@ def _teach(content_id: int, label: int) -> None:
         db.log("brain", f"could not record training example: {e}", "warn")
 
 
+def _decide(content_id: int, status: str, label: int) -> bool:
+    """Only a draft can be decided, and only once - so a double click or a bad
+    id never records a duplicate training example and skews the model."""
+    if not db.one("SELECT 1 FROM content WHERE id=? AND status='draft'",
+                  (content_id,)):
+        return False
+    db.x("UPDATE content SET status=? WHERE id=?", (status, content_id))
+    _teach(content_id, label)
+    return True
+
+
 def approve(content_id: int) -> bool:
     """Mark approved. The dashboard copies the text; the human posts it."""
-    db.x("UPDATE content SET status='approved' WHERE id=? AND status='draft'",
-         (content_id,))
-    _teach(content_id, 1)
-    db.log("publisher", f"content #{content_id} approved for posting")
-    return True
+    ok = _decide(content_id, "approved", 1)
+    if ok:
+        db.log("publisher", f"content #{content_id} approved for posting")
+    return ok
 
 
 def reject(content_id: int) -> bool:
-    db.x("UPDATE content SET status='rejected' WHERE id=? AND status='draft'",
-         (content_id,))
-    _teach(content_id, 0)
-    return True
+    return _decide(content_id, "rejected", 0)
 
 
 def mark_posted(content_id: int, url: str = "") -> bool:
