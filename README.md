@@ -100,8 +100,23 @@ python -m unittest discover -s tests
 
 39 tests, standard library only, no network.
 
+## Packaged edition for AI agents
+
+The Agensi marketplace carries a packaged edition that an agent (Claude Code,
+Codex CLI, Cursor and similar) loads on demand, with nothing to install:
+
+| Listing | What is inside |
+|---|---|
+| **Aether Listen** (free) | find and rank the people asking for what you sell |
+| **Aether Engine** (paid) | three skills in one purchase: the SEO pipeline above; **Agent Team**, which runs several AI agents through one Git repo with handoff messages, an inbox per agent, claim and done, and a status board; and **Aether Proof**, which checks a draft for filler, stock phrases and over-long sentences before it goes out |
+
+![A real listen-and-rank run](assets/listen.png)
+
+Both are on the creator page: <https://www.agensi.io/creators/abdullah-rathore>.
+Every script in that edition is one standalone standard-library file; the only
+one that uses the network reads no files, and nothing is ever posted for you.
+
 ## Licence
 
 Copyright (c) 2026 Abdullah Rathore. All rights reserved. The source is public
-for evaluation; see [LICENSE](LICENSE). A packaged edition for AI agents
-(Claude Code, Codex, Cursor) is distributed through the Agensi marketplace.
+for evaluation; see [LICENSE](LICENSE). The packaged edition is distributed through the Agensi marketplace.
