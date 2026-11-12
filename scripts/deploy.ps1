@@ -36,8 +36,7 @@ $hasGh = [bool](Get-Command gh -ErrorAction SilentlyContinue)
 if (-not (Test-Path "$Root\.git")) {
     Step "Initialising repository"
     git init -b main | Out-Null
-    if (-not (git config user.name))  { git config user.name  "Abdullah" }
-    if (-not (git config user.email)) { git config user.email "rathoreabdullah816@gmail.com" }
+    if (-not (git config user.name) -or -not (git config user.email)) { throw "Set git user.name and user.email first." }
 }
 
 # --- secret guard -----------------------------------------------------------

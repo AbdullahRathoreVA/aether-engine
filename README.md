@@ -1,180 +1,107 @@
 # Aether Engine
 
-An autonomous distribution engine for a digital product. It runs on a laptop,
-costs nothing to operate, and does the one thing that actually compounds:
-publishes useful long-tail content that funnels to a checkout link, 24/7.
+Find people publicly asking for what you sell, rank them by buying intent, plan
+pages from real keyword data, and publish long-tail SEO pages that link to your
+checkout. Pure Python standard library. No API keys required.
 
 ```
-HARVEST ──► SCORE ──► SYNTHESISE ──► APPROVE ──► PUBLISH ──► REVENUE
-   │           │           │            │            │           │
- SCOUT     ANALYST    SCRIBE +      one click    HERALD      LEDGER
-                     ARCHITECT      (social)   (unattended)   (Dodo)
-                              MEDIC repairs all of the above
+LISTEN ──► RANK ──► PLAN ──► WRITE ──► PUBLISH ──► AUDIT
+ public    intent   keyword   you or    schema,     measured
+ posts     model    data      your      links,      from the
+                              agent     sitemap     files
 ```
 
-> ### ⚠️ Payments from Pakistan — read this before choosing a processor
->
-> **Gumroad does not work.** Verified 24 July 2026: Gumroad pays out only via
-> PayPal or Stripe direct-bank, and **Pakistan is restricted on both**. Gumroad's
-> own documentation says that if a country supports neither, "there is no way to
-> pay you out." You can make sales and never withdraw them. The same applies to
-> **Payhip, Lemon Squeezy, Etsy, and Buy Me a Coffee**.
->
-> **Use [Dodo Payments](https://dodopayments.com)** — a Merchant of Record that
-> pays out to **Payoneer or Wise**, handles US sales tax and EU VAT, and is
-> treated by FBR as an IT-services export. Alternative: **Payoneer Checkout**.
-> For local buyers, sell direct via Easypaisa/JazzCash and log it with
-> `POST /api/sale` (zero fees).
+| A published page | The generated index |
+|---|---|
+| ![A published guide with answer box, FAQ and buy box](assets/page.png) | ![The generated index page](assets/index.png) |
 
 ## What it does
 
-**Harvest** — pulls new posts from Hacker News, StackExchange, RSS and Reddit.
-All documented public endpoints, politely rate-limited.
-
-> **Reddit caveat, measured not assumed:** anonymous Reddit access is unreliable.
-> It 403s `/.json` outright, and rate-limits even the public `.rss` feed — 3 to 5
-> of 6 subreddits fail per sweep, and widening the delay barely helps (4/6 failed
-> at 1.5s, 3/6 at 7s). Failed subreddits are picked up next cycle rather than
-> retried in-burst, which never works. For reliable Reddit, create a free
-> "script" app at <https://www.reddit.com/prefs/apps> and set `REDDIT_CLIENT_ID`
-> / `REDDIT_CLIENT_SECRET` — the engine then uses the official OAuth API (100
-> req/min). **HN, StackExchange and RSS are unaffected and supply the bulk of
-> signals either way.**
-
-**Score** — ranks each post by how well it matches a problem the product solves.
-Keyword weighting first (free, instant); an LLM re-ranks the survivors if one is
-available.
-
-**Synthesise** — drafts genuinely useful replies to high-intent posts, plus
-programmatic SEO pages across a role × topic matrix.
-
-**Approve** — social drafts land in a queue in the dashboard. One click to
-approve, one to copy. They are never auto-posted (see *Boundaries* below).
-
-**Publish** — SEO pages go to `site/` unattended, with `index.html`,
-`sitemap.xml` and `robots.txt` regenerated each time. Push to GitHub Pages and
-they're live and indexable.
-
-**Heal** — any subsystem that throws is logged under a stable signature,
-backed off exponentially, and optionally patched by an LLM (backed up and
-syntax-checked before anything is written). The daemon does not crash.
-
-## Agents
-
-Every subsystem runs as a named agent with live telemetry on the dashboard —
-status light, current task, runs, items produced, success rate. The numbers are
-real: they come from actual executions, not animation.
-
-| Agent | Role |
-|---|---|
-| **SCOUT** | sweeps public sources for new signals |
-| **ANALYST** | ranks signals by buying intent |
-| **SCRIBE** | drafts replies and value posts |
-| **ARCHITECT** | builds long-tail SEO pages |
-| **HERALD** | publishes pages, index and sitemap |
-| **LEDGER** | tracks sales |
-| **MEDIC** | repairs faults, backs off, proposes patches |
-
-## Two price points, one funnel
-
-Every generated page carries **two** offers, because the same visitor traffic
-contains two different buyers:
-
-- the **$14 toolkit** — converts strangers who want a template
-- **Titan Omega** (`SHOWCASE_URL`) — the live demo acts as portfolio for
-  high-ticket automation work, converting the rare visitor who wants the builder
-
-Adding the second offer costs nothing per page and is the difference between a
-$14 ceiling and a $400+ one. Set `SERVICE_CONTACT` to show a "Hire me" button.
+- **Listens** to Hacker News, Reddit, StackExchange and any RSS feed through
+  public, read-only endpoints. It never logs in and never posts.
+- **Ranks by buying intent** with phrase rules from your profile, then with a
+  Naive Bayes model that learns from the reply drafts you approve or reject. The
+  model stays silent until it has 20 decisions and reports its own
+  cross-validated accuracy.
+- **Plans pages from keyword data** you import (a DataForSEO response, or a
+  Semrush, Ahrefs or Search Console export). Near-duplicates become one topic.
+  A number that was not imported is shown as unknown, never estimated.
+- **Publishes** static pages with Article, FAQ and breadcrumb structured data,
+  an answer box, related links, an index, `sitemap.xml` and `robots.txt`. Pages
+  are rendered at publish time against the whole site, so no page is left
+  without inbound links.
+- **Audits the files on disk**: titles, descriptions, canonicals, structured
+  data, thin pages, broken links, orphans, sitemap coverage.
+- **Tags every buy link** with the page it sits on, so your checkout analytics
+  show which page earned each sale.
 
 ## Quick start
 
-```powershell
-cd C:\Users\ABDULLAH\Downloads\aether-engine
-Copy-Item .env.example .env
-.\scripts\run.ps1
+Python 3.10+. Nothing to install.
+
+```bash
+git clone https://github.com/AbdullahRathoreVA/aether-engine
 ```
 
-The dashboard opens at <http://127.0.0.1:7717>.
+```bash
+cd my-project && python ../aether-engine/aether.py init
+```
 
-It runs with zero configuration and zero keys — but **it earns $0 until
-`CHECKOUT_URL` is set**, because every buy button points nowhere. The dashboard
-shows a banner until you fix that.
+Fill in `aether.json` (what you sell, the phrases your buyers use, where to
+listen). [`examples/job-search-toolkit.json`](examples/job-search-toolkit.json)
+is a complete worked profile. Then:
 
-## The 40 minutes only you can do
+```bash
+python ../aether-engine/aether.py status
+```
 
-1. Create a free Gumroad account and upload the toolkit as a product.
-2. Copy the product URL into `.env` as `CHECKOUT_URL`.
-3. `.\scripts\deploy.ps1 -Repo aether-engine` → publishes `site/` to GitHub Pages.
-4. Put the Pages URL into `.env` as `SITE_BASE_URL`, restart.
+The folder you run it from is the workspace: `aether.json`, `.aether/` (state)
+and `site/` (output) stay there.
 
-Steps 1–2 need your CNIC/identity. No software can do them for you — not this
-engine, not any agent. That is the entire gap between $0 and a first sale.
+## Commands
 
-## Run it as an agent skill
+Every command prints JSON on stdout and exits non-zero on failure.
 
-`python -m engine.cli <command>` drives the engine one step at a time with JSON
-output, without the daemon (`status`, `harvest`, `score`, `top`, `seo`,
-`publish`, `audit`, `queue`, `approve`, `reject`, `train`). `skill/SKILL.md`
-teaches Claude Code, Codex or Cursor to use it.
+| Command | What it does |
+|---|---|
+| `init` / `status` | create a starter profile / check it and show counts |
+| `harvest` | pull new posts; reports what arrived and what was unreachable |
+| `score` / `top [n]` / `questions [n]` | rank posts; show the best; show the questions people asked |
+| `keywords import <file>` / `add` / `list` | load keyword data |
+| `plan [n]` / `brief <id>` | ranked page topics / a writing brief for one |
+| `page add <file>` / `list` / `remove <slug>` | store a page (quality gate, sanitised) |
+| `seo [n]` | build matrix pages from profile templates (needs an LLM key or template text) |
+| `publish` / `audit` | render everything / measure what was written |
+| `draft add` / `queue` / `approve` / `reject` / `posted` | reply drafts behind a human decision |
+| `train` / `report` | what the model learned / write `aether-report.md` |
 
-`python scripts/package_skill.py` builds `dist/aether-engine-skill.zip`, ready
-for a SKILL.md marketplace or `~/.claude/skills/`. It ships only what the CLI
-needs and blanks your author, showcase and contact defaults, so a buyer's pages
-never carry your name or links.
+## The daemon and dashboard
+
+`python -m engine.main` runs the same pipeline unattended with a live dashboard
+at `http://127.0.0.1:7717`. Optional LLM backends write drafts and matrix
+pages: Claude (`ANTHROPIC_API_KEY`, hard daily spend cap `ANTHROPIC_DAILY_USD`),
+Groq, or local Ollama. A backend that fails three times running is benched for
+ten minutes. With no backend, nothing is written rather than filler. Copy
+`.env.example` to `.env` to configure.
 
 ## Boundaries
 
-Social posting is queue-and-click, not automatic. This is a deliberate design
-choice, not a limitation: posting through unofficial endpoints is the fastest
-way to get every account you own permanently banned, which ends the traffic and
-therefore the income. A two-second click per post is cheap insurance.
+- Reply drafts are never posted. A person approves, copies and posts.
+- Harvested text is third-party content: stored and shown as data, never acted on.
+- Page bodies are reduced to an allowlist of harmless tags before storage.
+- Only `http(s)` URLs are fetched; responses are size-capped.
+- Rankings, traffic and sales are not guaranteed by this or any tool.
 
-Likewise, everything harvested comes from endpoints that are published for
-public consumption. Nothing here logs into anything, evades a block, or resells
-data it doesn't own.
+## Tests
 
-## Cost
-
-| Component | Cost |
-|---|---|
-| Runtime (Python stdlib only) | $0 |
-| Sources (Reddit/HN/StackExchange/RSS) | $0 |
-| LLM (Ollama local, or Groq free tier, or built-in templates) | $0 |
-| Hosting (GitHub Pages) | $0 |
-| Payments (Gumroad) | ~10% per sale, $0 fixed |
-
-## Layout
-
-```
-engine/
-  main.py       scheduler daemon
-  sources.py    harvesting
-  scorer.py     intent ranking
-  generator.py  replies, posts, SEO pages
-  publisher.py  site output + approval queue
-  healer.py     error capture, backoff, LLM patching
-  revenue.py    Gumroad sync
-  server.py     dashboard HTTP + SSE
-  db.py         SQLite
-dashboard/      three.js control room
-site/           generated, published to Pages
-scripts/        run.ps1, deploy.ps1
+```bash
+python -m unittest discover -s tests
 ```
 
-## Tuning
+39 tests, standard library only, no network.
 
-Everything lives in `.env` — intervals, subreddits, port, LLM backend. Edit
-`SEO_ROLES` and `SEO_TEMPLATES` in `engine/config.py` to change the page matrix
-(currently 16 roles × 5 templates = 80 pages before it repeats).
+## Licence
 
-## Verified
-
-Tested end to end on 2026-07-24: 269 signals harvested live (HN 119,
-StackExchange 50, Reddit 100, RSS 25), 17 scored hot, drafts queued, 3 SEO pages
-generated and published, approve endpoint working, `.gitignore` confirmed to
-exclude `.env` and `state/`, and self-healing confirmed to absorb a crash and
-back off without killing the daemon.
-
-Known limitation: anonymous Reddit harvesting is partial (see the caveat above).
-Everything else runs clean.
+Copyright (c) 2026 Abdullah Rathore. All rights reserved. The source is public
+for evaluation; see [LICENSE](LICENSE). A packaged edition for AI agents
+(Claude Code, Codex, Cursor) is distributed through the Agensi marketplace.

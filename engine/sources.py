@@ -4,6 +4,10 @@ Every source below is an official read API that permits unauthenticated access:
   - Reddit  : the public .json view of any listing
   - HN      : Algolia's free public search API
   - StackEx : api.stackexchange.com, no key needed under the anonymous quota
+  - RSS     : any feed the profile lists
+
+Where to listen comes from the profile (sources.*). Everything harvested is
+third-party text: it is stored and shown as data and never acted on.
 
 We do not log in, do not touch private endpoints, and do not evade anything.
 That is not a compromise - authenticated scraping is what gets accounts killed,
@@ -20,10 +24,21 @@ import xml.etree.ElementTree as ET
 
 from . import config, db, net
 
+# What could not be reached in the current sweep, so a caller can tell "nothing
+# new" from "the source was down" instead of reporting a silent zero.
+_failures: list[str] = []
+
+
+def _fail(what: str, e: Exception) -> None:
+    code = getattr(e, "code", None)
+    _failures.append(f"{what}: {'HTTP ' + str(code) if code else type(e).__name__}")
+
 
 def _store(source: str, external_id: str, *, url: str, title: str,
            body: str, author: str, created_utc: float) -> bool:
     """Insert if new. Returns True when a genuinely new signal landed."""
+    if not external_id or not (url or "").startswith(("http://", "https://")):
+        return False
     rid = db.x(
         "INSERT OR IGNORE INTO signals"
         "(source,external_id,url,title,body,author,created_utc,harvested_at)"
@@ -85,6 +100,7 @@ def _harvest_reddit_oauth(token: str) -> int:
         try:
             data = net.get_json(url, headers={"Authorization": f"Bearer {token}"})
         except Exception as e:
+            _fail(f"r/{sub}", e)
             db.log("harvest", f"r/{sub} (oauth) failed: {type(e).__name__}", "warn")
             continue
 
@@ -112,8 +128,9 @@ def harvest_reddit() -> int:
         url = f"https://www.reddit.com/r/{urllib.parse.quote(sub)}/new/.rss"
         try:
             root = ET.fromstring(net.fetch(url, retries=0))
-        except Exception:
+        except Exception as e:
             failed += 1
+            _fail(f"r/{sub}", e)
             continue
 
         for entry in root.findall("a:entry", ATOM_NS):
@@ -158,25 +175,28 @@ def harvest_reddit() -> int:
 
 # --------------------------------------------------------------- hackernews --
 def harvest_hn() -> int:
+    """Stories (Ask HN included) and comments matching the profile's queries."""
     new = 0
-    queries = ["resume ATS", "job search advice", "applying to jobs rejection"]
-    for query in queries:
+    for query in config.HN_QUERIES:
         url = ("https://hn.algolia.com/api/v1/search_by_date"
-               f"?query={urllib.parse.quote(query)}&tags=comment&hitsPerPage=40")
+               f"?query={urllib.parse.quote(query)}&tags=(story,comment)&hitsPerPage=40")
         try:
             data = net.get_json(url)
         except Exception as e:
+            _fail(f"hackernews '{query}'", e)
             db.log("harvest", f"HN '{query}' failed: {type(e).__name__}", "warn")
             continue
 
         for hit in data.get("hits", []):
-            text = html.unescape(hit.get("comment_text") or "")
-            if len(text) < 80:
+            is_story = bool(hit.get("title"))
+            text = html.unescape(hit.get("story_text" if is_story else "comment_text") or "")
+            text = " ".join(re.sub(r"<[^>]+>", " ", text).split())
+            if not is_story and len(text) < 80:
                 continue
             if _store(
                 "hackernews", str(hit.get("objectID", "")),
                 url=f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
-                title=hit.get("story_title") or query,
+                title=hit.get("title") or hit.get("story_title") or query,
                 body=text,
                 author=hit.get("author", ""),
                 created_utc=float(hit.get("created_at_i") or 0),
@@ -187,82 +207,102 @@ def harvest_hn() -> int:
 
 # ------------------------------------------------------------ stackexchange --
 def harvest_stackexchange() -> int:
-    url = ("https://api.stackexchange.com/2.3/questions"
-           "?order=desc&sort=creation&site=workplace&filter=withbody&pagesize=50")
-    try:
-        data = net.get_json(url)
-    except Exception as e:
-        db.log("harvest", f"StackExchange failed: {type(e).__name__}", "warn")
-        return 0
-
     new = 0
-    for item in data.get("items", []):
-        body = html.unescape(item.get("body", ""))
-        body = " ".join(body.replace("<", " <").split())
-        if _store(
-            "stackexchange", str(item.get("question_id", "")),
-            url=item.get("link", ""),
-            title=html.unescape(item.get("title", "")),
-            body=body,
-            author=(item.get("owner") or {}).get("display_name", ""),
-            created_utc=float(item.get("creation_date") or 0),
-        ):
-            new += 1
+    for src in config.STACKEXCHANGE:
+        if not src["site"]:
+            continue
+        url = ("https://api.stackexchange.com/2.3/questions"
+               "?order=desc&sort=creation&filter=withbody&pagesize=50"
+               f"&site={urllib.parse.quote(src['site'])}")
+        if src["tagged"]:
+            url += f"&tagged={urllib.parse.quote(src['tagged'])}"
+        try:
+            data = net.get_json(url)
+        except Exception as e:
+            _fail(f"stackexchange {src['site']}", e)
+            db.log("harvest", f"StackExchange {src['site']} failed: {type(e).__name__}", "warn")
+            continue
+
+        for item in data.get("items", []):
+            body = html.unescape(item.get("body", ""))
+            body = " ".join(re.sub(r"<[^>]+>", " ", body).split())
+            if _store(
+                "stackexchange", f"{src['site']}:{item.get('question_id', '')}",
+                url=item.get("link", ""),
+                title=html.unescape(item.get("title", "")),
+                body=body,
+                author=(item.get("owner") or {}).get("display_name", ""),
+                created_utc=float(item.get("creation_date") or 0),
+            ):
+                new += 1
     return new
 
 
 # -------------------------------------------------------------------- rss ----
 def harvest_rss(feeds: list[str] | None = None) -> int:
-    feeds = feeds or [
-        "https://www.reddit.com/r/jobs/.rss",
-        "https://hnrss.org/newest?q=resume",
-    ]
     new = 0
-    for feed in feeds:
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    for feed in (feeds if feeds is not None else config.RSS_FEEDS):
         try:
             root = ET.fromstring(net.fetch(feed))
         except Exception as e:
+            _fail(f"rss {feed}", e)
             db.log("harvest", f"RSS {feed} failed: {type(e).__name__}", "warn")
             continue
 
-        ns = {"a": "http://www.w3.org/2005/Atom"}
-        entries = root.findall(".//item") or root.findall(".//a:entry", ns)
-        for e in entries:
+        for e in root.findall(".//item") or root.findall(".//a:entry", ns):
             def txt(*names: str) -> str:
                 for n in names:
-                    el = e.find(n) if not n.startswith("a:") else e.find(n, ns)
+                    el = e.find(n, ns) if n.startswith("a:") else e.find(n)
                     if el is not None and el.text:
                         return el.text
                 return ""
 
-            link_el = e.find("link") or e.find("a:link", ns)
-            link = (link_el.text if link_el is not None and link_el.text
-                    else (link_el.get("href", "") if link_el is not None else ""))
+            # An Element with no children is falsy, so `find(..) or find(..)`
+            # silently discards a perfectly good <link>. Test for None.
+            link_el = e.find("link")
+            if link_el is None:
+                link_el = e.find("a:link", ns)
+            link = ""
+            if link_el is not None:
+                link = (link_el.text or "").strip() or link_el.get("href", "")
             title = txt("title", "a:title")
             if not link or not title:
                 continue
-            if _store("rss", link, url=link, title=title,
-                      body=txt("description", "a:summary", "a:content"),
-                      author="", created_utc=time.time()):
+            body = html.unescape(txt("description", "a:summary", "a:content"))
+            body = " ".join(re.sub(r"<[^>]+>", " ", body).split())
+            if _store("rss", link, url=link, title=html.unescape(title),
+                      body=body, author="", created_utc=time.time()):
                 new += 1
     return new
 
 
-def harvest_all() -> int:
-    total = 0
-    for name, fn in (("reddit", harvest_reddit),
-                     ("hackernews", harvest_hn),
-                     ("stackexchange", harvest_stackexchange),
-                     ("rss", harvest_rss)):
+SOURCES = (("reddit", harvest_reddit), ("hackernews", harvest_hn),
+           ("stackexchange", harvest_stackexchange), ("rss", harvest_rss))
+
+
+def harvest_report(only: list[str] | None = None) -> dict:
+    """One sweep. Says what arrived per source and what could not be reached."""
+    _failures.clear()
+    by_source: dict[str, int] = {}
+    for name, fn in SOURCES:
+        if only and name not in only:
+            continue
         try:
             n = fn()
-            total += n
+            by_source[name] = n
             if n:
                 db.log("harvest", f"{name}: +{n} new signals")
         except Exception as e:
             # One dead source must never stop the others.
+            _fail(name, e)
             db.log("harvest", f"{name} crashed: {type(e).__name__}: {e}", "error")
 
     db.set_metric("last_harvest", time.time())
     db.set_metric("signals_total", db.scalar("SELECT COUNT(*) FROM signals"))
-    return total
+    return {"new_signals": sum(by_source.values()), "by_source": by_source,
+            "unreachable": list(_failures)}
+
+
+def harvest_all() -> int:
+    return harvest_report()["new_signals"]

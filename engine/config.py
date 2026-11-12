@@ -4,16 +4,20 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-STATE_DIR = ROOT / "state"
-# GitHub Pages only serves from the repo root or /docs - not an arbitrary
-# folder - so the generated site lives in docs/ to be publishable as-is.
-SITE_DIR = ROOT / "docs"
-PATCH_DIR = ROOT / "state" / "patches"
+# Two layouts. Run from the repo (daemon, dashboard): everything lives beside
+# the code. Run as an installed skill: AETHER_HOME is the user's project folder,
+# so state and output never land inside the skill directory.
+PKG_ROOT = Path(__file__).resolve().parent.parent
+_home = os.environ.get("AETHER_HOME", "").strip()
+WORKSPACE_MODE = bool(_home)
+ROOT = Path(_home).expanduser().resolve() if _home else PKG_ROOT
+STATE_DIR = ROOT / (".aether" if WORKSPACE_MODE else "state")
+PATCH_DIR = STATE_DIR / "patches"
 DB_PATH = STATE_DIR / "aether.db"
 
-for _d in (STATE_DIR, SITE_DIR, PATCH_DIR):
-    _d.mkdir(parents=True, exist_ok=True)
+if not WORKSPACE_MODE:  # a workspace is only written to by `init` and later
+    for _d in (STATE_DIR, PATCH_DIR):
+        _d.mkdir(parents=True, exist_ok=True)
 
 
 def _load_dotenv() -> None:
@@ -49,50 +53,77 @@ def env_int(key: str, default: int) -> int:
         return default
 
 
+def env_float(key: str, default: float) -> float:
+    try:
+        return float(env(key, str(default)))
+    except ValueError:
+        return default
+
+
 def env_bool(key: str, default: bool = False) -> bool:
     return env(key, "1" if default else "0").lower() in ("1", "true", "yes", "on")
 
 
 # ---------------------------------------------------------------- product ----
-# The funnel terminates here. Until CHECKOUT_URL is real, the engine generates
-# traffic into a dead end — it will warn loudly on every boot.
-#
-# PAYMENTS, PAKISTAN: Gumroad / Payhip / Lemon Squeezy / Etsy / Buy Me a Coffee
-# all pay out ONLY via PayPal or Stripe direct-bank, and Pakistan is restricted
-# on both — you can make sales and never withdraw them. Verified 2026-07-24.
-# Use Dodo Payments (Merchant of Record -> Payoneer/Wise) or Payoneer Checkout.
-PRODUCT_NAME = env("PRODUCT_NAME", "AI Job-Search Toolkit")
-PRODUCT_PRICE = env("PRODUCT_PRICE", "$14")
-CHECKOUT_URL = env("CHECKOUT_URL", "")
-SITE_BASE_URL = env("SITE_BASE_URL", "")  # e.g. https://user.github.io/repo
+# Everything niche-specific comes from aether.json (see profile.py). A value set
+# in the environment wins, so one profile can be deployed to several places.
+from . import profile as _profile  # noqa: E402
+
+PROFILE = _profile.load(ROOT)
+_prod, _site = PROFILE["product"], PROFILE["site"]
+_offer = PROFILE.get("second_offer") or {}
+
+
+def _pick(key: str, value, default: str = "") -> str:
+    return env(key) or str(value or "").strip() or default
+
+
+PRODUCT_NAME = _pick("PRODUCT_NAME", _prod.get("name"))
+PRODUCT_PRICE = _pick("PRODUCT_PRICE", _prod.get("price"))
+PRODUCT_DESCRIPTION = str(_prod.get("description") or "").strip()
+PRODUCT_AUDIENCE = str(_prod.get("audience") or "").strip()
+CHECKOUT_URL = _pick("CHECKOUT_URL", _prod.get("checkout_url"))
+if not _profile.is_http_url(CHECKOUT_URL):
+    CHECKOUT_URL = ""  # never render a javascript: or relative buy link
+SITE_BASE_URL = _pick("SITE_BASE_URL", _site.get("base_url"))
+if not _profile.is_http_url(SITE_BASE_URL):
+    SITE_BASE_URL = ""
+SITE_TITLE = str(_site.get("title") or "").strip()
+SITE_LEDE = str(_site.get("lede") or "").strip()
+# schema.org author on every page; blank omits it.
+SITE_AUTHOR = _pick("SITE_AUTHOR", _site.get("author"))
+# Tag checkout links with the page they came from, so the seller's own checkout
+# analytics show which page earned each sale.
+TRACK_REF = bool(_site.get("track_ref", True))
 CONTACT_WHATSAPP = env("CONTACT_WHATSAPP", "")
 
-# ---------------------------------------------------- second, high-ticket ----
-# A $14 download and a high-ticket service funnel from the same traffic. The
-# cheap product converts strangers; the service converts the few who need more.
-# One visitor can only buy the toolkit; one visitor in a thousand hires you.
-# Titan Omega is the FLAGSHIP, not a footnote. Per his resume it is the lead
-# project: 102 agents across 12 divisions, FastAPI + Next.js 14, deployed solo.
-# It is also the proof that sells the service - a live system a prospect can
-# open and test before hiring him, which is what most freelancers cannot show.
-SHOWCASE_NAME = env("SHOWCASE_NAME", "Titan Omega")
-SHOWCASE_URL = env("SHOWCASE_URL",
-                   "https://careermind2026-project-titan-omega.hf.space")
-SHOWCASE_TAGLINE = env(
-    "SHOWCASE_TAGLINE",
-    "a 102-agent autonomous AI operating system across 12 divisions — "
-    "designed, built and deployed solo")
-SERVICE_NAME = env("SERVICE_NAME",
-                   "AI agents, workflow automation (n8n / Make.com) and "
-                   "custom AI applications")
-SERVICE_PRICE_FROM = env("SERVICE_PRICE_FROM", "$400")
-# Dodo checkout link for the Deploy-for-You service, or a mailto:. This is the
-# high-ticket half of the funnel and converts in weeks, not months.
-SERVICE_CONTACT = env("SERVICE_CONTACT",
-                      "mailto:abdullahrathore.va@gmail.com")
-SHOWCASE_ENABLED = env_bool("SHOWCASE_ENABLED", True)
-# schema.org author on every page; blank omits it.
-SITE_AUTHOR = env("SITE_AUTHOR", "Muhammad Abdullah Rathore")
+# GitHub Pages only serves from the repo root or /docs, so the repo layout keeps
+# docs/; a workspace defaults to site/.
+_dir = str(_site.get("dir") or "").strip() if PROFILE["_exists"] else ""
+if not _dir or Path(_dir).is_absolute() or ".." in Path(_dir).parts:
+    _dir = "site" if WORKSPACE_MODE else "docs"
+SITE_DIR = ROOT / _dir
+
+CTA_TITLE = str(PROFILE["cta"].get("title") or "").strip()
+CTA_BODY = str(PROFILE["cta"].get("body") or "").strip()
+CTA_BUTTON = str(PROFILE["cta"].get("button") or "").strip()
+REPLY_PERSONA = str(PROFILE["voice"].get("reply_persona") or "").strip()
+PAGE_PERSONA = str(PROFILE["voice"].get("page_persona") or "").strip()
+TEMPLATE_HOOKS = _profile._strs(PROFILE["voice"].get("template_hooks"))
+TEMPLATE_ANGLES = _profile._strs(PROFILE["voice"].get("template_angles"))
+
+# ---------------------------------------------------- second, optional offer --
+# A second, higher-priced offer under every page (a service, a bigger product).
+# Off unless the profile or environment supplies one: a page never advertises
+# anything its owner did not put there.
+SHOWCASE_NAME = _pick("SHOWCASE_NAME", _offer.get("name"))
+SHOWCASE_URL = _pick("SHOWCASE_URL", _offer.get("url"))
+SHOWCASE_TAGLINE = _pick("SHOWCASE_TAGLINE", _offer.get("tagline"))
+SERVICE_NAME = _pick("SERVICE_NAME", _offer.get("service"))
+SERVICE_PRICE_FROM = _pick("SERVICE_PRICE_FROM", _offer.get("price_from"))
+SERVICE_CONTACT = _pick("SERVICE_CONTACT", _offer.get("contact"))
+SHOWCASE_ENABLED = (env_bool("SHOWCASE_ENABLED", bool(_offer.get("url")))
+                    and _profile.is_http_url(SHOWCASE_URL))
 
 # ---------------------------------------------------------------- cadence ----
 # Seconds between each subsystem's runs. Defaults are deliberately polite:
@@ -119,9 +150,14 @@ OLLAMA_MODEL = env("OLLAMA_MODEL", "llama3.2")
 # Turn on for offline use or when the text must not leave the machine.
 PREFER_LOCAL = env_bool("PREFER_LOCAL", False)
 GROQ_API_KEY = env("GROQ_API_KEY")
-GROQ_MODEL = env("GROQ_MODEL", "llama-3.3-70b-versatile")
+# If this model is retired, llm.py picks a live one from Groq's model list.
+GROQ_MODEL = env("GROQ_MODEL", "openai/gpt-oss-120b")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-sonnet-5")
+ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-fable-5-2")
+# low | medium | high: how hard Claude thinks. Thinking is billed as output.
+ANTHROPIC_EFFORT = env("ANTHROPIC_EFFORT", "medium")
+# Hard daily spend cap. Over it, the engine drops to Groq/Ollama/templates.
+ANTHROPIC_DAILY_USD = env_float("ANTHROPIC_DAILY_USD", 2.0)
 LLM_MAX_TOKENS = env_int("LLM_MAX_TOKENS", 1200)
 
 # ---------------------------------------------------------------- server -----
@@ -174,43 +210,33 @@ AUTO_PUBLISH_SOCIAL = False  # intentionally not env-overridable
 REDDIT_CLIENT_ID = env("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = env("REDDIT_CLIENT_SECRET")
 
-SUBREDDITS = [
-    s.strip() for s in env(
-        "SUBREDDITS",
-        "jobs,resumes,cscareerquestions,careerguidance,GetEmployed,jobsearchhacks",
-    ).split(",") if s.strip()
+_src, _intent, _matrix = PROFILE["sources"], PROFILE["intent"], PROFILE["matrix"]
+
+SUBREDDITS = ([x.strip() for x in env("SUBREDDITS").split(",") if x.strip()]
+              or _profile._strs(_src.get("subreddits")))
+HN_QUERIES = _profile._strs(_src.get("hn_queries"))
+RSS_FEEDS = _profile._strs(_src.get("rss"))
+# [{"site": "workplace", "tagged": "resume"}] - a bare string is a site name.
+STACKEXCHANGE = [
+    {"site": str((x.get("site") if isinstance(x, dict) else x) or "").strip(),
+     "tagged": str((x.get("tagged") if isinstance(x, dict) else "") or "").strip()}
+    for x in (_src.get("stackexchange") or [])
 ]
 
+# weight: phrases that signal someone actively hurting in a way the product solves
 INTENT_KEYWORDS = {
-    # weight: phrases that signal someone actively hurting in a way we solve
-    3.0: ["ats rejec", "resume not getting", "no callback", "no interviews",
-          "applied to 100", "applied to 200", "ghosted by recruit",
-          "resume black hole", "auto rejected"],
-    2.0: ["ats friendly", "resume template", "rewrite my resume", "resume help",
-          "cover letter help", "optimize my linkedin", "linkedin profile help",
-          "how to tailor resume", "keyword optimize"],
-    1.0: ["job search", "applying for jobs", "interview prep", "career change",
-          "laid off", "job hunt", "application tracker"],
+    3.0: [x.lower() for x in _profile._strs(_intent.get("strong"))],
+    2.0: [x.lower() for x in _profile._strs(_intent.get("medium"))],
+    1.0: [x.lower() for x in _profile._strs(_intent.get("weak"))],
 }
+NEGATIVE_KEYWORDS = [x.lower() for x in _profile._strs(_intent.get("negative"))]
+FIRST_PERSON = [" i ", "i'm ", "im ", " my ", "we're ", " our "] + [
+    x.lower() for x in _profile._strs(_intent.get("first_person"))]
 
-NEGATIVE_KEYWORDS = [
-    "hiring", "we are looking for", "job posting", "[hiring]", "salary thread",
-    "offer letter signed", "i got the job", "accepted the offer",
-]
-
-# Long-tail programmatic SEO matrix. Real search demand, zero ToS risk,
-# compounds while the laptop sleeps.
-SEO_ROLES = [
-    "software engineer", "data analyst", "project manager", "accountant",
-    "nurse", "marketing manager", "customer support", "sales representative",
-    "graphic designer", "mechanical engineer", "teacher", "business analyst",
-    "product manager", "devops engineer", "financial analyst", "hr generalist",
-]
-
-SEO_TEMPLATES = [
-    ("ats-resume-keywords-for-{role}", "ATS Resume Keywords for {Role} (2026 List)"),
-    ("resume-summary-examples-{role}", "15 Resume Summary Examples for {Role}"),
-    ("cover-letter-template-{role}", "Cover Letter Template for {Role} That Passes ATS"),
-    ("linkedin-headline-examples-{role}", "LinkedIn Headline Examples for {Role}"),
-    ("ai-prompts-for-{role}-job-search", "10 AI Prompts for a {Role} Job Search"),
-]
+# Optional programmatic matrix: every subject x every template is one page.
+SEO_ROLES = _profile._strs(_matrix.get("subjects"))
+MATRIX_TEMPLATES = [t for t in (_matrix.get("templates") or [])
+                    if isinstance(t, dict) and "{subject}" in str(t.get("slug", ""))]
+SEO_TEMPLATES = [(str(t["slug"]).replace("{subject}", "{role}"),
+                  str(t.get("title", "")).replace("{Subject}", "{Role}")
+                  .replace("{subject}", "{role}")) for t in MATRIX_TEMPLATES]

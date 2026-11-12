@@ -16,24 +16,45 @@ from __future__ import annotations
 import html
 import time
 
-from . import brain, config, db
+from . import brain, config, db, render
+
+
+def _adopt_legacy_rows() -> None:
+    """Version 1 stored finished HTML. Recover the parts once, so those pages
+    are re-linked with the rest of the site from now on."""
+    for row in db.q("SELECT id,html FROM pages WHERE body IS NULL AND html!=''"):
+        parts = render.legacy_parts(row["html"])
+        if parts and parts["body"]:
+            db.x("UPDATE pages SET body=?,answer=?,faqs=?,description=? WHERE id=?",
+                 (parts["body"], parts["answer"], parts["faqs"],
+                  parts["description"], row["id"]))
 
 
 def publish_pages() -> int:
-    """Write unpublished pages to site/ and regenerate index + sitemap."""
-    rows = db.q("SELECT * FROM pages WHERE published=0")
-    if not rows and (config.SITE_DIR / "index.html").exists():
-        return 0
+    """Render every page against the whole site and write what changed.
+
+    Returns the number of files written. Rendering is deterministic, so an
+    unchanged page is not rewritten and its sitemap date does not move.
+    """
+    _adopt_legacy_rows()
+    rows = db.q("SELECT * FROM pages ORDER BY slug")
+    config.SITE_DIR.mkdir(parents=True, exist_ok=True)
 
     written = 0
     for row in rows:
+        page = render.page_html(row, rows) if row["body"] else row["html"]
+        if not page:
+            continue
         path = config.SITE_DIR / f"{row['slug']}.html"
         try:
-            path.write_text(row["html"], encoding="utf-8")
-            db.x("UPDATE pages SET published=1, published_at=? WHERE id=?",
-                 (time.time(), row["id"]))
-            written += 1
-        except Exception as e:
+            old = path.read_text(encoding="utf-8") if path.exists() else None
+            if old != page:
+                path.write_text(page, encoding="utf-8", newline="\n")
+                written += 1
+            if old != page or not row["published"]:
+                db.x("UPDATE pages SET published=1, published_at=?, html=? WHERE id=?",
+                     (time.time(), page, row["id"]))
+        except OSError as e:
             db.log("publisher", f"write {row['slug']} failed: {e}", "error")
 
     _write_index()
@@ -49,31 +70,43 @@ def publish_pages() -> int:
 
 
 def _write_index() -> None:
-    rows = db.q("SELECT slug,title,role,created_at FROM pages WHERE published=1 "
-                "ORDER BY created_at DESC")
+    rows = db.q("SELECT slug,title,role,cluster,created_at FROM pages "
+                "WHERE published=1 ORDER BY created_at DESC")
 
-    by_role: dict[str, list] = {}
+    groups: dict[str, list] = {}
     for r in rows:
-        by_role.setdefault(r["role"] or "general", []).append(r)
+        groups.setdefault(r["role"] or r["cluster"] or "guides", []).append(r)
 
     sections = []
-    for role in sorted(by_role):
+    for name in sorted(groups):
         links = "".join(
             f'<li><a href="{html.escape(r["slug"])}.html">'
             f'{html.escape(r["title"])}</a></li>'
-            for r in by_role[role]
+            for r in groups[name]
         )
-        sections.append(f"<h2>{html.escape(role.title())}</h2><ul>{links}</ul>")
-
-    checkout = config.CHECKOUT_URL or "#checkout-not-configured"
+        sections.append(f"<h2>{html.escape(name.title())}</h2><ul>{links}</ul>")
     body = "".join(sections) or "<p>No guides published yet.</p>"
+
+    name = config.PRODUCT_NAME
+    title = config.SITE_TITLE or (f"{name} guides" if name else "Guides")
+    lede = config.SITE_LEDE or config.PRODUCT_DESCRIPTION
+    desc = str(config.PROFILE["site"].get("description") or "").strip() or lede
+    hero = ""
+    link = render.checkout_link("index")
+    if link:
+        button = (f"Get it &mdash; {html.escape(config.PRODUCT_PRICE)}"
+                  if config.PRODUCT_PRICE else "Learn more")
+        hero = (f'<div class="hero">\n  <b>{html.escape(name)}</b>\n'
+                f'  <p style="color:var(--mut);margin:8px 0 0">'
+                f'{html.escape(config.PRODUCT_DESCRIPTION)}</p>\n'
+                f'  <a class="btn" href="{html.escape(link, quote=True)}">{button}</a>\n</div>')
+    suffix = " &middot; " + html.escape(name) if name and name not in title else ""
 
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Free Job-Search Guides &middot; {html.escape(config.PRODUCT_NAME)}</title>
-<meta name="description" content="Free, specific guides on ATS resumes, cover letters,
-LinkedIn headlines and AI prompts for the job search.">
+<title>{html.escape(title)}{suffix}</title>
+<meta name="description" content="{html.escape(desc, quote=True)}">
 <style>
 :root{{--bg:#0b0d12;--fg:#e6e9f0;--mut:#9aa4b8;--acc:#ffc857}}
 *{{box-sizing:border-box}}
@@ -92,28 +125,22 @@ border-radius:12px;padding:28px;margin:0 0 44px}}
 padding:13px 26px;border-radius:9px;margin-top:14px}}
 .btn:hover{{text-decoration:none;filter:brightness(1.08)}}
 </style></head><body><div class="wrap">
-<h1>Free Job-Search Guides</h1>
-<p class="lede">Specific, no-filler guides on getting past applicant tracking
-systems &mdash; organised by role.</p>
-<div class="hero">
-  <b>{html.escape(config.PRODUCT_NAME)}</b>
-  <p style="color:var(--mut);margin:8px 0 0">ATS-ready resume &amp; cover letter
-  templates, 100 AI prompts, LinkedIn checklist, application tracker.</p>
-  <a class="btn" href="{html.escape(checkout)}">Get it &mdash;
-  {html.escape(config.PRODUCT_PRICE)}</a>
-</div>
+<h1>{html.escape(title)}</h1>
+<p class="lede">{html.escape(lede)}</p>
+{hero}
 {body}
 {_index_showcase()}
 </div></body></html>"""
-    (config.SITE_DIR / "index.html").write_text(page, encoding="utf-8")
+    (config.SITE_DIR / "index.html").write_text(page, encoding="utf-8", newline="\n")
 
 
 def _index_showcase() -> str:
-    if not (config.SHOWCASE_ENABLED and config.SHOWCASE_URL):
+    if not config.SHOWCASE_ENABLED:
         return ""
     contact = config.SERVICE_CONTACT
-    hire = (f' &middot; <a href="{html.escape(contact)}">Hire me from '
-            f'{html.escape(config.SERVICE_PRICE_FROM)}</a>') if contact else ""
+    ok = contact.startswith("mailto:") or render.safe_href(contact)
+    hire = (f' &middot; <a href="{html.escape(contact, quote=True)}">Hire me from '
+            f'{html.escape(config.SERVICE_PRICE_FROM)}</a>') if contact and ok else ""
     return (
         f'<div class="hero" style="margin-top:48px">'
         f'<b>{html.escape(config.SHOWCASE_NAME)}</b>'
@@ -123,7 +150,7 @@ def _index_showcase() -> str:
         f'{html.escape(config.SHOWCASE_TAGLINE)}. '
         f'If you need {html.escape(config.SERVICE_NAME)}, the live demo is the '
         f'portfolio.</p>'
-        f'<a href="{html.escape(config.SHOWCASE_URL)}" target="_blank" '
+        f'<a href="{html.escape(config.SHOWCASE_URL, quote=True)}" target="_blank" '
         f'rel="noopener">See the live demo &rarr;</a>{hire}</div>'
     )
 
@@ -143,7 +170,7 @@ def _write_sitemap() -> None:
     xml = ('<?xml version="1.0" encoding="UTF-8"?>\n'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
            + "".join(urls) + "</urlset>")
-    (config.SITE_DIR / "sitemap.xml").write_text(xml, encoding="utf-8")
+    (config.SITE_DIR / "sitemap.xml").write_text(xml, encoding="utf-8", newline="\n")
 
 
 def _write_robots() -> None:
@@ -152,7 +179,7 @@ def _write_robots() -> None:
     if base:
         lines.append(f"Sitemap: {base}/sitemap.xml")
     (config.SITE_DIR / "robots.txt").write_text("\n".join(lines) + "\n",
-                                                encoding="utf-8")
+                                                encoding="utf-8", newline="\n")
 
 
 # ------------------------------------------------------------ approval q -----
@@ -168,8 +195,8 @@ def _teach(content_id: int, label: int) -> None:
     """Turn a human decision into a training example.
 
     The text we learn from is the ORIGINAL post, not our draft - we are trying
-    to predict which opportunities Abdullah considers worth his time, so the
-    signal is what he was shown, not what we wrote.
+    to predict which opportunities the owner considers worth answering, so the
+    signal is what they were shown, not what we wrote.
     """
     row = db.one(
         "SELECT c.kind, s.title, s.body, s.source, s.id AS sid "
@@ -209,6 +236,10 @@ def reject(content_id: int) -> bool:
 
 
 def mark_posted(content_id: int, url: str = "") -> bool:
+    """Record that the human posted an approved draft themselves."""
+    if not db.one("SELECT 1 FROM content WHERE id=? AND status='approved'",
+                  (content_id,)):
+        return False
     db.x("UPDATE content SET status='published', published_url=?, published_at=? "
          "WHERE id=?", (url, time.time(), content_id))
     db.set_metric("content_published",

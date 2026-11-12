@@ -70,14 +70,7 @@ def _ask(backend: str, text: str) -> float | None:
                 headers={"Authorization": f"Bearer {config.GROQ_API_KEY}"},
             )["choices"][0]["message"]["content"]
         elif backend == "anthropic" and config.ANTHROPIC_API_KEY:
-            out = "".join(b.get("text", "") for b in net.post_json(
-                "https://api.anthropic.com/v1/messages",
-                {"model": config.ANTHROPIC_MODEL, "max_tokens": 120,
-                 "system": TEACHER_SYSTEM,
-                 "messages": [{"role": "user", "content": prompt}]},
-                headers={"x-api-key": config.ANTHROPIC_API_KEY,
-                         "anthropic-version": "2023-06-01"},
-            ).get("content", []))
+            out = llm.claude(prompt, system=TEACHER_SYSTEM, effort="low")
         else:
             return None
     except Exception:
@@ -120,7 +113,7 @@ def available_teachers() -> list[str]:
     model stays as a generation fallback (llm.py) but is not trusted to label.
     """
     strong = []
-    if config.ANTHROPIC_API_KEY:
+    if config.ANTHROPIC_API_KEY and llm.claude_spent() < config.ANTHROPIC_DAILY_USD:
         strong.append("anthropic")
     if config.GROQ_API_KEY:
         strong.append("groq")
