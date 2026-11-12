@@ -1,13 +1,13 @@
-"""Machine learning that actually learns - from Abdullah's own decisions.
+"""Machine learning that actually learns - from the owner's own decisions.
 
-This is a real classifier, not a decorative one. Every time he approves or
-rejects a draft, that becomes a labelled training example. The model learns
-which posts HE thinks are worth answering, and starts ranking new signals by
-predicted approval rather than by my hand-written keyword weights.
+This is a real classifier, not a decorative one. Every time a draft is approved or
+rejected, that becomes a labelled training example. The model learns
+which posts the owner thinks are worth answering, and starts ranking new signals by
+predicted approval rather than by the profile's keyword weights.
 
 Why Naive Bayes and not a neural net:
-  - it trains usefully on tens of examples, not tens of thousands. He will
-    generate maybe 20 decisions a week, so anything data-hungry would never
+  - it trains usefully on tens of examples, not tens of thousands. One person
+    generates maybe 20 decisions a week, so anything data-hungry would never
     leave its cold start.
   - pure stdlib, no numpy, no torch, no install, no cost.
   - the weights are inspectable, so the dashboard can honestly show WHY a post

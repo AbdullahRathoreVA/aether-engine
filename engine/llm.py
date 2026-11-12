@@ -24,6 +24,38 @@ _backend_checked: float = 0.0
 # a restart, and a backend that dies is demoted on its own.
 _BACKEND_TTL = 180.0
 
+# Circuit breaker. A backend that fails three times running is benched for ten
+# minutes, so a dead key or a retired model costs three calls, not hundreds.
+_fails: dict[str, int] = {}
+_benched: dict[str, float] = {}
+_BENCH_AFTER, _BENCH_FOR = 3, 600.0
+_groq_model = ""  # set when the configured model was retired and we recovered
+
+
+def _alive(backend: str) -> bool:
+    return time.time() >= _benched.get(backend, 0.0)
+
+
+def _groq_recover() -> bool:
+    """The configured Groq model was retired (404). Pick a live one."""
+    global _groq_model
+    try:
+        data = net.get_json("https://api.groq.com/openai/v1/models",
+                            headers={"Authorization": f"Bearer {config.GROQ_API_KEY}"})
+    except Exception:
+        return False
+    ids = [m.get("id", "") for m in data.get("data", [])]
+    chat = [i for i in ids if not any(x in i for x in
+            ("whisper", "guard", "orpheus", "tts", "embed"))]
+    for want in ("gpt-oss-120b", "70b", "qwen", "gpt-oss-20b"):
+        pick = next((i for i in chat if want in i), "")
+        if pick and pick != (_groq_model or config.GROQ_MODEL):
+            _groq_model = pick
+            db.log("llm", f"Groq model {config.GROQ_MODEL} is gone; using {pick} "
+                          f"(set GROQ_MODEL to choose)", "warn")
+            return True
+    return False
+
 
 def _ollama_ready() -> bool:
     """True only if the server is up AND the configured model is pulled.
@@ -35,7 +67,7 @@ def _ollama_ready() -> bool:
     """
     try:
         import json
-        raw = net.fetch(f"{config.OLLAMA_URL}/api/tags", retries=0)
+        raw = net.fetch(f"{config.OLLAMA_URL}/api/tags", retries=0, timeout=2)
         tags = json.loads(raw)
     except Exception:
         return False
@@ -66,13 +98,14 @@ def detect_backend(force: bool = False) -> str:
     # Set PREFER_LOCAL=1 to invert this (offline work, or private data).
     local_ok = _ollama_ready()
 
-    if config.PREFER_LOCAL and local_ok:
+    if config.PREFER_LOCAL and local_ok and _alive("ollama"):
         backend = "ollama"
-    elif config.ANTHROPIC_API_KEY and claude_spent() < config.ANTHROPIC_DAILY_USD:
+    elif (config.ANTHROPIC_API_KEY and _alive("anthropic")
+          and claude_spent() < config.ANTHROPIC_DAILY_USD):
         backend = "anthropic"
-    elif config.GROQ_API_KEY:
+    elif config.GROQ_API_KEY and _alive("groq"):
         backend = "groq"
-    elif local_ok:
+    elif local_ok and _alive("ollama"):
         backend = "ollama"
     else:
         backend = "template"
@@ -84,39 +117,47 @@ def detect_backend(force: bool = False) -> str:
     return backend
 
 
-def generate(prompt: str, *, system: str = "", max_tokens: int | None = None) -> str:
+def _call(backend: str, prompt: str, system: str, max_tokens: int) -> str:
+    if backend == "ollama":
+        out = net.post_json(
+            f"{config.OLLAMA_URL}/api/generate",
+            {
+                "model": config.OLLAMA_MODEL,
+                "prompt": prompt,
+                "system": system,
+                "stream": False,
+                "options": {"num_predict": max_tokens, "temperature": 0.8},
+            },
+        )
+        return (out.get("response") or "").strip()
+
+    if backend == "groq":
+        msgs = ([{"role": "system", "content": system}] if system else [])
+        msgs.append({"role": "user", "content": prompt})
+        out = net.post_json(
+            "https://api.groq.com/openai/v1/chat/completions",
+            {"model": _groq_model or config.GROQ_MODEL, "messages": msgs,
+             "max_tokens": max_tokens, "temperature": 0.8},
+            headers={"Authorization": f"Bearer {config.GROQ_API_KEY}"},
+        )
+        return out["choices"][0]["message"]["content"].strip()
+
+    if backend == "anthropic":
+        return claude(prompt, system=system)
+
+    return ""
+
+
+def generate(prompt: str, *, system: str = "", max_tokens: int | None = None,
+             _retry: bool = True) -> str:
     """Return model text, or '' if every backend fails (caller falls back)."""
     backend = detect_backend()
     max_tokens = max_tokens or config.LLM_MAX_TOKENS
 
     try:
-        if backend == "ollama":
-            out = net.post_json(
-                f"{config.OLLAMA_URL}/api/generate",
-                {
-                    "model": config.OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "system": system,
-                    "stream": False,
-                    "options": {"num_predict": max_tokens, "temperature": 0.8},
-                },
-            )
-            return (out.get("response") or "").strip()
-
-        if backend == "groq":
-            msgs = ([{"role": "system", "content": system}] if system else [])
-            msgs.append({"role": "user", "content": prompt})
-            out = net.post_json(
-                "https://api.groq.com/openai/v1/chat/completions",
-                {"model": config.GROQ_MODEL, "messages": msgs,
-                 "max_tokens": max_tokens, "temperature": 0.8},
-                headers={"Authorization": f"Bearer {config.GROQ_API_KEY}"},
-            )
-            return out["choices"][0]["message"]["content"].strip()
-
-        if backend == "anthropic":
-            return claude(prompt, system=system)
-
+        out = _call(backend, prompt, system, max_tokens)
+        _fails[backend] = 0
+        return out
     except Exception as e:
         # A bare "HTTPError" is undiagnosable. Surface the status and any
         # rate-limit headers: 12 consecutive silent failures during a bulk
@@ -138,7 +179,15 @@ def generate(prompt: str, *, system: str = "", max_tokens: int | None = None) ->
                               + ")")
             except Exception:
                 pass
-        db.log("llm", f"{backend} failed: {detail} — falling back", "warn")
+        if backend == "groq" and code == 404 and _retry and _groq_recover():
+            return generate(prompt, system=system, max_tokens=max_tokens, _retry=False)
+        db.log("llm", f"{backend} failed: {detail} - falling back", "warn")
+        _fails[backend] = _fails.get(backend, 0) + 1
+        if _fails[backend] >= _BENCH_AFTER:
+            _benched[backend] = time.time() + _BENCH_FOR
+            _fails[backend] = 0
+            db.log("llm", f"{backend} benched for {_BENCH_FOR / 60:.0f} min after "
+                          f"{_BENCH_AFTER} failures in a row", "warn")
         # Re-detect next call: Ollama may have been started, key may have expired.
         globals()["_backend_cache"] = None
 
@@ -203,28 +252,14 @@ def generate_json(prompt: str, *, system: str = "") -> dict | list | None:
 
 
 # ------------------------------------------------------- template fallback ---
-_HOOKS = [
-    "Most resumes die in the ATS, not in front of a human.",
-    "The gap is almost never your experience. It's the keywords.",
-    "Applying to 200 jobs with one resume is 200 rejections in a trench coat.",
-    "Recruiters spend about 7 seconds on a resume. Design for those 7 seconds.",
-    "If your resume isn't mirroring the job description's language, it isn't being read.",
-]
-
-_ANGLES = [
-    "Paste the job description into an AI and ask it to extract the top 15 hard skills. "
-    "Those exact strings belong in your resume - verbatim, where you actually have them.",
-    "Rewrite every bullet as: action verb + what you did + a number. No number means no bullet.",
-    "Your LinkedIn headline should read like a search query a recruiter would type, "
-    "not like a job title your last employer invented.",
-    "Tailor one resume per role family, not per job. Three good versions beat fifty rushed ones.",
-    "Track every application in a sheet with the date, the keywords you targeted, and the "
-    "outcome. Patterns show up within two weeks.",
-]
-
-
 def template_post(topic: str, seed: int = 0) -> str:
+    """A draft assembled from the profile's own hooks and angles.
+
+    '' when the profile supplies none: with no model and no template text the
+    honest output is nothing, not filler about someone else's niche.
+    """
+    hooks, angles = config.TEMPLATE_HOOKS, config.TEMPLATE_ANGLES
+    if not (hooks and angles):
+        return ""
     r = random.Random(seed or hash(topic) & 0xFFFF)
-    hook = r.choice(_HOOKS)
-    angle = r.choice(_ANGLES)
-    return f"{hook}\n\n{angle}\n\nThat's the whole idea behind {topic}."
+    return f"{r.choice(hooks)}\n\n{r.choice(angles)}\n\nThat's the whole idea behind {topic}."

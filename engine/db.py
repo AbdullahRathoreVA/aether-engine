@@ -92,6 +92,18 @@ CREATE TABLE IF NOT EXISTS revenue (
     UNIQUE(source, external_id)
 );
 
+CREATE TABLE IF NOT EXISTS keywords (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword     TEXT NOT NULL UNIQUE,
+    volume      INTEGER,            -- monthly searches; NULL = not known
+    difficulty  REAL,               -- 0-100; NULL = not known
+    cpc         REAL,
+    competition REAL,               -- paid competition, 0-1
+    intent      TEXT,
+    source      TEXT,               -- where the numbers came from
+    imported_at REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS metrics (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -112,10 +124,23 @@ def conn():
             c.close()
 
 
+# Columns added after the first release. A page is now stored as its parts and
+# rendered at publish time, so internal links always reflect the whole site.
+_ADDED = {"pages": {"body": "TEXT", "answer": "TEXT", "faqs": "TEXT",
+                    "description": "TEXT", "cluster": "TEXT",
+                    "updated_at": "REAL"}}
+
+
 def init() -> None:
+    config.STATE_DIR.mkdir(parents=True, exist_ok=True)
     with conn() as c:
         c.execute("PRAGMA journal_mode=WAL")
         c.executescript(SCHEMA)
+        for table, cols in _ADDED.items():
+            have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+            for col, kind in cols.items():
+                if col not in have:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
 
 
 def q(sql: str, args: Iterable = ()) -> list[sqlite3.Row]:
@@ -183,8 +208,11 @@ def log(module: str, message: str, level: str = "info", **meta) -> None:
             if d in _subscribers:
                 _subscribers.remove(d)
 
-    print(f"[{time.strftime('%H:%M:%S')}] {level.upper():5s} {module:10s} {message}",
-          flush=True)
+    try:
+        print(f"[{time.strftime('%H:%M:%S')}] {level.upper():5s} {module:10s} {message}",
+              flush=True)
+    except (UnicodeEncodeError, OSError, ValueError):
+        pass  # a console that cannot show a character must not stop the run
 
 
 def set_metric(key: str, value: Any) -> None:

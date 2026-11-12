@@ -33,3 +33,8 @@ _*.py
 
 # --- build output ------------------------------------------------------------
 dist/
+
+# --- workspace (your own profile, state and reports) --------------------------
+/aether.json
+.aether/
+aether-report.md

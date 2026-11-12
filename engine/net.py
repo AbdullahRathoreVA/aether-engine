@@ -7,6 +7,7 @@ burden on a free service.
 from __future__ import annotations
 
 import gzip
+import io
 import json
 import threading
 import time
@@ -20,6 +21,7 @@ from . import config
 _host_lock = threading.Lock()
 _last_hit: dict[str, float] = {}
 MIN_GAP = 1.5  # default seconds between requests to the same host
+MAX_BYTES = 8_000_000  # no response we want is larger; caps a hostile feed
 
 # Reddit rate-limits unauthenticated clients hard and it is NOT purely a spacing
 # problem: measured 4/6 subreddits failing at 1.5s and still 3/6 at 7s. Widening
@@ -58,6 +60,8 @@ _API_UA = "python-urllib/3 aether-engine"
 def fetch(url: str, *, data: bytes | None = None, headers: dict | None = None,
           method: str | None = None, retries: int = 2,
           timeout: int | None = None) -> str:
+    if not url.lower().startswith(("http://", "https://")):
+        raise ValueError("only http(s) URLs are fetched")  # no file://, no ftp://
     _throttle(url)
     host = urllib.parse.urlparse(url).netloc
     hdrs = {
@@ -74,9 +78,13 @@ def fetch(url: str, *, data: bytes | None = None, headers: dict | None = None,
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=timeout or config.HTTP_TIMEOUT) as resp:
-                raw = resp.read()
+                raw = resp.read(MAX_BYTES + 1)
+                if len(raw) > MAX_BYTES:
+                    raise ValueError(f"response larger than {MAX_BYTES} bytes")
                 if resp.headers.get("Content-Encoding") == "gzip":
-                    raw = gzip.decompress(raw)
+                    raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read(MAX_BYTES + 1)
+                    if len(raw) > MAX_BYTES:
+                        raise ValueError(f"response larger than {MAX_BYTES} bytes")
                 return raw.decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
             last_err = e
