@@ -9,8 +9,9 @@ from pathlib import Path
 # so state and output never land inside the skill directory.
 PKG_ROOT = Path(__file__).resolve().parent.parent
 _home = os.environ.get("AETHER_HOME", "").strip()
-WORKSPACE_MODE = bool(_home)
-ROOT = Path(_home).expanduser().resolve() if _home else PKG_ROOT
+# Running the launcher inside the repository itself is still the repo layout.
+WORKSPACE_MODE = bool(_home) and Path(_home).expanduser().resolve() != PKG_ROOT
+ROOT = Path(_home).expanduser().resolve() if WORKSPACE_MODE else PKG_ROOT
 STATE_DIR = ROOT / (".aether" if WORKSPACE_MODE else "state")
 PATCH_DIR = STATE_DIR / "patches"
 DB_PATH = STATE_DIR / "aether.db"
