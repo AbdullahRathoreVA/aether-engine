@@ -111,6 +111,18 @@ shows a banner until you fix that.
 Steps 1–2 need your CNIC/identity. No software can do them for you — not this
 engine, not any agent. That is the entire gap between $0 and a first sale.
 
+## Run it as an agent skill
+
+`python -m engine.cli <command>` drives the engine one step at a time with JSON
+output, without the daemon (`status`, `harvest`, `score`, `top`, `seo`,
+`publish`, `audit`, `queue`, `approve`, `reject`, `train`). `skill/SKILL.md`
+teaches Claude Code, Codex or Cursor to use it.
+
+`python scripts/package_skill.py` builds `dist/aether-engine-skill.zip`, ready
+for a SKILL.md marketplace or `~/.claude/skills/`. It ships only what the CLI
+needs and blanks your author, showcase and contact defaults, so a buyer's pages
+never carry your name or links.
+
 ## Boundaries
 
 Social posting is queue-and-click, not automatic. This is a deliberate design

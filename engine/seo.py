@@ -148,11 +148,12 @@ def build_schema(title: str, desc: str, canonical: str, role: str,
             "datePublished": date,
             "dateModified": date,
             "inLanguage": "en",
-            "author": {"@type": "Person", "name": "Muhammad Abdullah Rathore"},
             "about": {"@type": "Thing", "name": f"{role} job search"},
             "mainEntityOfPage": {"@type": "WebPage", "@id": canonical},
         }
     ]
+    if config.SITE_AUTHOR:
+        graph[0]["author"] = {"@type": "Person", "name": config.SITE_AUTHOR}
 
     if faqs:
         graph.append({

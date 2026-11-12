@@ -91,6 +91,8 @@ SERVICE_PRICE_FROM = env("SERVICE_PRICE_FROM", "$400")
 SERVICE_CONTACT = env("SERVICE_CONTACT",
                       "mailto:abdullahrathore.va@gmail.com")
 SHOWCASE_ENABLED = env_bool("SHOWCASE_ENABLED", True)
+# schema.org author on every page; blank omits it.
+SITE_AUTHOR = env("SITE_AUTHOR", "Muhammad Abdullah Rathore")
 
 # ---------------------------------------------------------------- cadence ----
 # Seconds between each subsystem's runs. Defaults are deliberately polite:
