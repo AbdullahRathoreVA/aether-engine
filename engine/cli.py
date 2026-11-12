@@ -19,7 +19,8 @@ def _status() -> dict:
             "signals": n("SELECT COUNT(*) FROM signals"),
             "pages": n("SELECT COUNT(*) FROM pages"),
             "published": n("SELECT COUNT(*) FROM pages WHERE published=1"),
-            "queued": len(publisher.queue())}
+            "queued": len(publisher.queue()),
+            "claude_usd_today": round(llm.claude_spent(), 4)}
 
 
 CMDS = {

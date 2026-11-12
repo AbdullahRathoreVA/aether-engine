@@ -141,6 +141,7 @@ data it doesn't own.
 | Runtime (Python stdlib only) | $0 |
 | Sources (Reddit/HN/StackExchange/RSS) | $0 |
 | LLM (Ollama local, or Groq free tier, or built-in templates) | $0 |
+| Claude Fable 5.2 (optional, best output, used first when keyed) | capped by `ANTHROPIC_DAILY_USD`, default $2/day |
 | Hosting (GitHub Pages) | $0 |
 | Payments (Gumroad) | ~10% per sale, $0 fixed |
 

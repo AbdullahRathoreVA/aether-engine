@@ -56,7 +56,8 @@ _API_UA = "python-urllib/3 aether-engine"
 
 
 def fetch(url: str, *, data: bytes | None = None, headers: dict | None = None,
-          method: str | None = None, retries: int = 2) -> str:
+          method: str | None = None, retries: int = 2,
+          timeout: int | None = None) -> str:
     _throttle(url)
     host = urllib.parse.urlparse(url).netloc
     hdrs = {
@@ -72,7 +73,7 @@ def fetch(url: str, *, data: bytes | None = None, headers: dict | None = None,
 
     for attempt in range(retries + 1):
         try:
-            with urllib.request.urlopen(req, timeout=config.HTTP_TIMEOUT) as resp:
+            with urllib.request.urlopen(req, timeout=timeout or config.HTTP_TIMEOUT) as resp:
                 raw = resp.read()
                 if resp.headers.get("Content-Encoding") == "gzip":
                     raw = gzip.decompress(raw)
@@ -106,12 +107,14 @@ def get_json(url: str, *, headers: dict | None = None) -> Any:
     return json.loads(fetch(url, headers=headers))
 
 
-def post_json(url: str, payload: dict, *, headers: dict | None = None) -> Any:
+def post_json(url: str, payload: dict, *, headers: dict | None = None,
+              timeout: int | None = None) -> Any:
     hdrs = {"Content-Type": "application/json"}
     if headers:
         hdrs.update(headers)
     body = json.dumps(payload).encode("utf-8")
-    return json.loads(fetch(url, data=body, headers=hdrs, method="POST"))
+    return json.loads(fetch(url, data=body, headers=hdrs, method="POST",
+                            timeout=timeout))
 
 
 def online() -> bool:

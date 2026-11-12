@@ -49,6 +49,13 @@ def env_int(key: str, default: int) -> int:
         return default
 
 
+def env_float(key: str, default: float) -> float:
+    try:
+        return float(env(key, str(default)))
+    except ValueError:
+        return default
+
+
 def env_bool(key: str, default: bool = False) -> bool:
     return env(key, "1" if default else "0").lower() in ("1", "true", "yes", "on")
 
@@ -121,7 +128,11 @@ PREFER_LOCAL = env_bool("PREFER_LOCAL", False)
 GROQ_API_KEY = env("GROQ_API_KEY")
 GROQ_MODEL = env("GROQ_MODEL", "llama-3.3-70b-versatile")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-sonnet-5")
+ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-fable-5-2")
+# low | medium | high: how hard Claude thinks. Thinking is billed as output.
+ANTHROPIC_EFFORT = env("ANTHROPIC_EFFORT", "medium")
+# Hard daily spend cap. Over it, the engine drops to Groq/Ollama/templates.
+ANTHROPIC_DAILY_USD = env_float("ANTHROPIC_DAILY_USD", 2.0)
 LLM_MAX_TOKENS = env_int("LLM_MAX_TOKENS", 1200)
 
 # ---------------------------------------------------------------- server -----

@@ -3,7 +3,7 @@
 Order of preference:
   1. Ollama on localhost      - free, private, works offline
   2. Groq free tier           - free, fast, needs a key
-  3. Anthropic                - paid, best quality, needs a key
+  3. Anthropic (Claude Fable)  - paid, best quality, capped by a daily budget
   4. Deterministic templates  - always available, costs nothing, never fails
 
 Step 4 is what makes the "$0 and it never stops" claim honest: with no keys and
@@ -68,10 +68,10 @@ def detect_backend(force: bool = False) -> str:
 
     if config.PREFER_LOCAL and local_ok:
         backend = "ollama"
+    elif config.ANTHROPIC_API_KEY and claude_spent() < config.ANTHROPIC_DAILY_USD:
+        backend = "anthropic"
     elif config.GROQ_API_KEY:
         backend = "groq"
-    elif config.ANTHROPIC_API_KEY:
-        backend = "anthropic"
     elif local_ok:
         backend = "ollama"
     else:
@@ -115,15 +115,7 @@ def generate(prompt: str, *, system: str = "", max_tokens: int | None = None) ->
             return out["choices"][0]["message"]["content"].strip()
 
         if backend == "anthropic":
-            out = net.post_json(
-                "https://api.anthropic.com/v1/messages",
-                {"model": config.ANTHROPIC_MODEL, "max_tokens": max_tokens,
-                 "system": system or "You are a helpful assistant.",
-                 "messages": [{"role": "user", "content": prompt}]},
-                headers={"x-api-key": config.ANTHROPIC_API_KEY,
-                         "anthropic-version": "2023-06-01"},
-            )
-            return "".join(b.get("text", "") for b in out.get("content", [])).strip()
+            return claude(prompt, system=system)
 
     except Exception as e:
         # A bare "HTTPError" is undiagnosable. Surface the status and any
@@ -151,6 +143,44 @@ def generate(prompt: str, *, system: str = "", max_tokens: int | None = None) ->
         globals()["_backend_cache"] = None
 
     return ""
+
+
+# Fable 5.2 list price per 1M tokens. Fallback models are cheaper, so billing
+# every call at this rate can only over-count - the budget never leaks.
+_USD_IN, _USD_OUT = 8.0, 40.0
+
+
+def claude_spent() -> float:
+    return float(db.get_metric("claude_usd_" + time.strftime("%Y-%m-%d"), 0) or 0)
+
+
+def claude(prompt: str, *, system: str = "", effort: str = "") -> str:
+    """One Claude call. Raises when the daily budget is spent; '' on refusal."""
+    spent = claude_spent()
+    if spent >= config.ANTHROPIC_DAILY_USD:
+        raise RuntimeError(f"daily Claude budget ${config.ANTHROPIC_DAILY_USD:g} spent")
+    out = net.post_json(
+        "https://api.anthropic.com/v1/messages",
+        {"model": config.ANTHROPIC_MODEL,
+         # Thinking is always on and counts toward max_tokens: a tight cap
+         # would be spent thinking and return no text. Length is set by prompt.
+         "max_tokens": 16000,
+         "output_config": {"effort": effort or config.ANTHROPIC_EFFORT},
+         "fallbacks": "default",  # a refusal is retried on a suitable model
+         "system": system or "You are a helpful assistant.",
+         "messages": [{"role": "user", "content": prompt}]},
+        headers={"x-api-key": config.ANTHROPIC_API_KEY,
+                 "anthropic-version": "2023-06-01",
+                 "anthropic-beta": "server-side-fallback-2026-07-01"},
+        timeout=180,
+    )
+    u = out.get("usage") or {}
+    cost = (u.get("input_tokens", 0) * _USD_IN + u.get("output_tokens", 0) * _USD_OUT) / 1e6
+    db.set_metric("claude_usd_" + time.strftime("%Y-%m-%d"), round(spent + cost, 6))
+    if out.get("stop_reason") == "refusal":
+        return ""
+    return "".join(b.get("text", "") for b in out.get("content", [])
+                   if b.get("type") == "text").strip()
 
 
 def generate_json(prompt: str, *, system: str = "") -> dict | list | None:

@@ -38,8 +38,9 @@ python -m engine.cli <command> [n|id]
 
 Copy `.env.example` to `.env`. Only `CHECKOUT_URL` matters for revenue.
 Optional: `SITE_BASE_URL` (enables sitemap), `REDDIT_CLIENT_ID`/`SECRET`
-(reliable Reddit), `OLLAMA_URL` or `GROQ_API_KEY` (varied LLM output; without
-them, deterministic templates are used). Set `SITE_AUTHOR` for the
+(reliable Reddit), `ANTHROPIC_API_KEY` (Claude Fable 5.2, best output, hard
+daily cap `ANTHROPIC_DAILY_USD`, default $2), `OLLAMA_URL` or `GROQ_API_KEY`
+(free; without any, deterministic templates are used). Set `SITE_AUTHOR` for the
 schema.org author; `SHOWCASE_*` / `SERVICE_*` add a second "hire me" offer
 to every page and are off by default. Edit `SEO_ROLES` / `SEO_TEMPLATES` in
 `engine/config.py` to retarget the page matrix at a different product.
